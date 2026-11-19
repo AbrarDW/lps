@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/abrardw/lps/internal/docker"
 	"github.com/abrardw/lps/internal/store"
+	"github.com/abrardw/lps/internal/tunnel"
 )
 
 // fakeEngine is an in-memory docker.Engine.
@@ -28,14 +30,24 @@ type fakeEngine struct {
 	volumes    map[string]bool
 	vpsSpecs   []docker.VPSSpec
 	builds     []string
+	buildFiles []string // dockerfile name used for each build
+	buildCtx   [][]string
 	buildErr   error
+	pingErr    error
 }
 
 func newFake() *fakeEngine {
 	return &fakeEngine{containers: map[string]string{}, volumes: map[string]bool{}}
 }
 
-func (f *fakeEngine) Ping(context.Context) (string, error)              { return "fake", nil }
+func (f *fakeEngine) Ping(context.Context) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.pingErr != nil {
+		return "", f.pingErr
+	}
+	return "fake", nil
+}
 func (f *fakeEngine) EnsureVPSImage(context.Context, io.Writer) error   { return nil }
 func (f *fakeEngine) newID() string                                     { f.n++; return fmt.Sprintf("c%d", f.n) }
 func (f *fakeEngine) Logs(context.Context, string, int) (string, error) { return "hello\n", nil }
@@ -61,11 +73,22 @@ func (f *fakeEngine) CreateVPS(_ context.Context, s docker.VPSSpec) (string, err
 	f.containers[id] = docker.StateStopped
 	return id, nil
 }
-func (f *fakeEngine) BuildImage(_ context.Context, r io.Reader, tag string, log io.Writer) error {
+func (f *fakeEngine) BuildImage(_ context.Context, r io.Reader, tag, dockerfile string, log io.Writer) error {
+	var names []string
+	tr := tar.NewReader(r)
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			break
+		}
+		names = append(names, h.Name)
+	}
 	io.Copy(io.Discard, r)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.builds = append(f.builds, tag)
+	f.buildFiles = append(f.buildFiles, dockerfile)
+	f.buildCtx = append(f.buildCtx, names)
 	fmt.Fprintln(log, "Step 1/1")
 	return f.buildErr
 }
@@ -103,7 +126,9 @@ type harness struct {
 	srv *Server
 }
 
-func setup(t *testing.T) *harness {
+func setup(t *testing.T) *harness { return setupWith(t, nil) }
+
+func setupWith(t *testing.T, tp tunnel.Provider) *harness {
 	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
@@ -112,7 +137,8 @@ func setup(t *testing.T) *harness {
 	eng := newFake()
 	cfg := DefaultConfig()
 	ui := fstest.MapFS{"index.html": {Data: []byte("<html>lps</html>")}}
-	srv := New(cfg, st, eng, ui, nil)
+	cfg.DashboardPort = 7070
+	srv := New(cfg, st, eng, tp, ui, nil)
 	ts := httptest.NewServer(srv.Handler())
 	jar, _ := cookiejar.New(nil)
 	t.Cleanup(func() { ts.Close(); srv.Shutdown(); st.Close() })

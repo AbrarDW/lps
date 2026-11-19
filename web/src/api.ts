@@ -17,6 +17,7 @@ export interface VPS {
   state: State;
   error?: string;
   provisionLog?: string;
+  remoteSsh?: string;
 }
 
 export interface Deployment {
@@ -43,6 +44,70 @@ export interface AppItem {
   error?: string;
   deploying: boolean;
   lastDeploy?: Deployment;
+  publicPort: number;
+  remoteUrl?: string;
+  publicUrl?: string;
+  dockerfile: string;
+  dockerfileSource: "lps" | "project";
+}
+
+export interface Detection {
+  type: string;
+  label: string;
+  port: number;
+  dockerfile: string;
+  notes: string[] | null;
+}
+
+export interface DetectResult {
+  hasDockerfile: boolean;
+  projectDockerfile?: string;
+  detection: Detection;
+  templates: Detection[];
+}
+
+export interface AppDockerfile {
+  source: "lps" | "project";
+  dockerfile: string;
+  projectHasDockerfile: boolean;
+  suggested?: Detection;
+}
+
+export interface NeedsAction { message: string; url?: string }
+
+export interface TunnelStatus {
+  installed: boolean;
+  running: boolean;
+  state: string;
+  dnsName: string;
+  hostName: string;
+  tailnet: string;
+  httpsEnabled: boolean;
+  funnelEnabled: boolean;
+  funnelPorts: number[] | null;
+}
+
+export interface ExposureView {
+  proto: "https" | "tcp";
+  port: number;
+  localPort: number;
+  public: boolean;
+  label: string;
+  url: string;
+  state: "active" | "pending" | "error";
+  error?: string;
+}
+
+export interface RemoteView {
+  provider: string;
+  available: boolean;
+  enabled: boolean;
+  status: TunnelStatus;
+  dashboardUrl?: string;
+  needsAction?: NeedsAction;
+  error?: string;
+  lastSync?: string;
+  exposures: ExposureView[];
 }
 
 export interface SystemInfo {
@@ -53,8 +118,21 @@ export interface SystemInfo {
   docker: { ok: boolean; version?: string; error?: string; hint?: string };
 }
 
+export interface SetupCheck {
+  id: string;
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail?: string;
+  required: boolean;
+  fixes?: { kind: "link" | "command" | "action"; label: string; value: string }[];
+}
+
+export interface SetupChecks { os: string; ready: boolean; checks: SetupCheck[] }
+
+export interface AutostartState { supported: boolean; enabled: boolean; error?: string }
+
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public needsAction?: NeedsAction) {
     super(message);
   }
 }
@@ -71,7 +149,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText, data.needsAction);
   return data as T;
 }
 
@@ -94,13 +172,33 @@ export const api = {
 
   listApps: () => request<AppItem[]>("GET", "/apps"),
   getApp: (id: number) => request<AppItem>("GET", `/apps/${id}`),
-  createApp: (a: { name: string; sourcePath: string; containerPort: number; cpus: number; memoryMb: number }) =>
-    request<AppItem>("POST", "/apps", a),
+  createApp: (a: {
+    name: string;
+    sourcePath: string;
+    containerPort: number;
+    cpus: number;
+    memoryMb: number;
+    dockerfile?: string;
+    saveToProject?: boolean;
+  }) => request<AppItem>("POST", "/apps", a),
+  detectApp: (sourcePath: string) => request<DetectResult>("POST", "/apps/detect", { sourcePath }),
+  appDockerfile: (id: number) => request<AppDockerfile>("GET", `/apps/${id}/dockerfile`),
+  setAppDockerfile: (id: number, dockerfile: string) => request<AppItem>("PUT", `/apps/${id}/dockerfile`, { dockerfile }),
   deployApp: (id: number) => request<Deployment>("POST", `/apps/${id}/deploy`),
   appAction: (id: number, action: "start" | "stop") => request<AppItem>("POST", `/apps/${id}/${action}`),
   deleteApp: (id: number) => request<void>("DELETE", `/apps/${id}`),
   appLogs: (id: number) => request<{ logs: string }>("GET", `/apps/${id}/logs?tail=300`),
   deployments: (id: number) => request<Deployment[]>("GET", `/apps/${id}/deployments`),
+  setAppPublic: (id: number, isPublic: boolean) => request<AppItem>("PUT", `/apps/${id}/public`, { public: isPublic }),
+
+  setupChecks: () => request<SetupChecks>("GET", "/setup/checks"),
+  setupAction: (action: string) => request<{ status: string }>("POST", `/setup/actions/${action}`),
+  autostart: () => request<AutostartState>("GET", "/system/autostart"),
+  setAutostart: (enabled: boolean) => request<AutostartState>("PUT", "/system/autostart", { enabled }),
+
+  remote: () => request<RemoteView>("GET", "/remote"),
+  setRemote: (enabled: boolean) => request<RemoteView>("PUT", "/remote", { enabled }),
+  syncRemote: () => request<RemoteView>("POST", "/remote/sync"),
 };
 
 /** Host to show in SSH commands / URLs: the dashboard's host when ports are published beyond localhost. */

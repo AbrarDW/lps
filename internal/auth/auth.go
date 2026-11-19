@@ -16,6 +16,9 @@ import (
 // MinPasswordLen is enforced for dashboard accounts, which may be exposed to the internet.
 const MinPasswordLen = 10
 
+// Cost is the bcrypt work factor. Tests may lower it to run faster.
+var Cost = 12
+
 // ErrWeakPassword is returned for passwords shorter than MinPasswordLen.
 var ErrWeakPassword = errors.New("password must be at least 10 characters")
 
@@ -27,7 +30,7 @@ func HashPassword(pw string) (string, error) {
 	if len(pw) > 72 { // bcrypt limit
 		return "", errors.New("password must be at most 72 bytes")
 	}
-	h, err := bcrypt.GenerateFromPassword([]byte(pw), 12)
+	h, err := bcrypt.GenerateFromPassword([]byte(pw), Cost)
 	return string(h), err
 }
 

@@ -15,6 +15,7 @@ build:
 # Cross-compile release binaries (pure Go, no CGO needed).
 build-all:
 	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/lpsd-windows-amd64.exe ./cmd/lpsd
+	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS) -H windowsgui" -o bin/lps-windows-amd64.exe ./cmd/lps
 	GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/lpsd-linux-amd64 ./cmd/lpsd
 	GOOS=linux   GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/lpsd-linux-arm64 ./cmd/lpsd
 	GOOS=darwin  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/lpsd-darwin-arm64 ./cmd/lpsd

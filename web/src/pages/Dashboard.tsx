@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import { Card, ErrorBox, StateBadge, formatLimits } from "../components/ui";
+import { Card, ErrorBox, StateBadge, Switch, formatLimits } from "../components/ui";
 
 const linkBtn = "rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-indigo-500";
 
@@ -9,6 +9,7 @@ export function Dashboard() {
   const system = useQuery({ queryKey: ["system"], queryFn: api.system, refetchInterval: 15000 });
   const vps = useQuery({ queryKey: ["vps"], queryFn: api.listVPS, refetchInterval: 5000 });
   const apps = useQuery({ queryKey: ["apps"], queryFn: api.listApps, refetchInterval: 5000 });
+  const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote, refetchInterval: 15000 });
   const docker = system.data?.docker;
 
   return (
@@ -18,6 +19,33 @@ export function Dashboard() {
           <p className="font-semibold">Docker is not reachable</p>
           <p className="mt-1">{docker.hint}</p>
           <p className="mt-1 font-mono text-xs opacity-75">{docker.error}</p>
+        </div>
+      )}
+
+      {remote.data?.available && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900">
+          <span>
+            <span className="font-medium">Remote access: </span>
+            {remote.data.enabled ? (
+              <>
+                on
+                {remote.data.dashboardUrl && (
+                  <>
+                    {" · "}
+                    <a className="text-indigo-600 hover:underline dark:text-indigo-400" href={remote.data.dashboardUrl}>
+                      {remote.data.dashboardUrl.replace("https://", "")}
+                    </a>
+                  </>
+                )}
+                {remote.data.needsAction && <span className="text-amber-700 dark:text-amber-300"> · needs attention</span>}
+              </>
+            ) : (
+              "off"
+            )}
+          </span>
+          <Link to="/remote" className="text-indigo-600 hover:underline dark:text-indigo-400">
+            {remote.data.enabled ? "Manage" : "Set up"}
+          </Link>
         </div>
       )}
 
@@ -75,6 +103,20 @@ export function Dashboard() {
           {docker?.ok && <> · Docker {docker.version}</>}
         </p>
       )}
+      <AutostartToggle />
     </>
+  );
+}
+
+function AutostartToggle() {
+  const qc = useQueryClient();
+  const auto = useQuery({ queryKey: ["autostart"], queryFn: api.autostart });
+  const set = useMutation({ mutationFn: api.setAutostart, onSuccess: (v) => qc.setQueryData(["autostart"], v) });
+  if (!auto.data?.supported) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <Switch label="Start with Windows" checked={auto.data.enabled} disabled={set.isPending} onChange={(v) => set.mutate(v)} />
+      Start LPS when I sign in to Windows
+    </div>
   );
 }

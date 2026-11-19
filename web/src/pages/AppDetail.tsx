@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
-import { api, displayHost } from "../api";
-import { Button, Card, ErrorBox, LogView, StateBadge, formatLimits } from "../components/ui";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { api, ApiError, displayHost } from "../api";
+import { DockerfileCard } from "../components/DockerfileCard";
+import { ActionBox, Button, Card, ErrorBox, LogView, StateBadge, Switch, formatLimits } from "../components/ui";
 
 export function AppDetail() {
   const id = Number(useParams().id);
@@ -23,7 +24,15 @@ export function AppDetail() {
   });
   const logs = useQuery({ queryKey: ["apps", id, "logs"], queryFn: () => api.appLogs(id), enabled: !!app.data?.containerId });
 
+  const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote });
   const refresh = () => qc.invalidateQueries({ queryKey: ["apps"] });
+  const setPublic = useMutation({
+    mutationFn: (p: boolean) => api.setAppPublic(id, p),
+    onSuccess: () => {
+      refresh();
+      qc.invalidateQueries({ queryKey: ["remote"] });
+    },
+  });
   const deploy = useMutation({ mutationFn: () => api.deployApp(id), onSuccess: () => { setSelected(null); refresh(); } });
   const action = useMutation({ mutationFn: (a: "start" | "stop") => api.appAction(id, a), onSuccess: refresh });
   const del = useMutation({
@@ -78,6 +87,17 @@ export function AppDetail() {
               <span>{url}</span>
             )}
           </div>
+          {a.remoteUrl && (
+            <div>
+              <span className="text-slate-500 dark:text-slate-400">From anywhere (Tailscale): </span>
+              <a className="text-indigo-600 hover:underline dark:text-indigo-400" href={a.remoteUrl} target="_blank" rel="noreferrer">
+                {a.remoteUrl}
+              </a>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">
+                Tailscale devices only. Use the public link below to share with anyone.
+              </span>
+            </div>
+          )}
           <div className="break-all">
             <span className="text-slate-500 dark:text-slate-400">Source: </span>
             <code>{a.sourcePath}</code>
@@ -88,6 +108,50 @@ export function AppDetail() {
           </div>
         </div>
       </Card>
+
+      <Card title="Public link">
+        {!remote.data?.enabled ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Turn on{" "}
+            <Link to="/remote" className="text-indigo-600 underline dark:text-indigo-400">
+              remote access
+            </Link>{" "}
+            to reach this app from your devices, or to share it with a public link.
+          </p>
+        ) : (
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center gap-3">
+              <Switch
+                label="Public link"
+                checked={a.publicPort > 0}
+                disabled={setPublic.isPending}
+                onChange={(v) => {
+                  if (!v || confirm("Anyone on the internet who has the link will be able to open this app. Continue?")) {
+                    setPublic.mutate(v);
+                  }
+                }}
+              />
+              <span>{a.publicPort > 0 ? "Anyone with the link can open this app" : "Only your Tailscale devices can open this app"}</span>
+            </div>
+            {a.publicUrl && (
+              <a className="block break-all text-indigo-600 hover:underline dark:text-indigo-400" href={a.publicUrl} target="_blank" rel="noreferrer">
+                {a.publicUrl}
+              </a>
+            )}
+            {a.publicPort > 0 && !a.publicUrl && <p className="text-slate-500">Setting up the public link…</p>}
+            {setPublic.error instanceof ApiError && setPublic.error.needsAction ? (
+              <ActionBox message={setPublic.error.needsAction.message} url={setPublic.error.needsAction.url} linkText="How to enable" />
+            ) : (
+              <ErrorBox error={setPublic.error} />
+            )}
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Uses Tailscale Funnel. A PC can have at most 2 public apps at a time.
+            </p>
+          </div>
+        )}
+      </Card>
+
+      <DockerfileCard appId={a.id} deploying={deploying} />
 
       <Card title="Deployments">
         <div className="mb-3 flex flex-wrap gap-2">

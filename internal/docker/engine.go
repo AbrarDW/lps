@@ -43,8 +43,9 @@ type Engine interface {
 	EnsureVPSImage(ctx context.Context, log io.Writer) error
 	// CreateVPS creates (but does not start) a VPS container and its home volume.
 	CreateVPS(ctx context.Context, spec VPSSpec) (containerID string, err error)
-	// BuildImage builds a tar build context into tag, streaming output to log.
-	BuildImage(ctx context.Context, buildContext io.Reader, tag string, log io.Writer) error
+	// BuildImage builds a tar build context into tag using the named
+	// Dockerfile inside the context, streaming output to log.
+	BuildImage(ctx context.Context, buildContext io.Reader, tag, dockerfile string, log io.Writer) error
 	// CreateApp creates (but does not start) an app container.
 	CreateApp(ctx context.Context, spec AppSpec) (containerID string, err error)
 	Start(ctx context.Context, id string) error

@@ -66,11 +66,13 @@ func TestTarDirHonoursDockerignore(t *testing.T) {
 	write(t, dir, ".git/HEAD", "x")
 
 	var buf bytes.Buffer
-	if err := TarDir(dir, &buf); err != nil {
+	write(t, dir, ".venv/lib/x.py", "x")
+	write(t, dir, "Dockerfile.lps", "stale")
+	if err := TarDir(dir, &buf, map[string][]byte{GeneratedDockerfile: []byte("FROM x")}); err != nil {
 		t.Fatal(err)
 	}
 	got := strings.Join(names(t, &buf), ",")
-	want := ".dockerignore,Dockerfile,src/app.js"
+	want := ".dockerignore,Dockerfile,Dockerfile.lps,src/app.js"
 	if got != want {
 		t.Fatalf("archive = %s, want %s", got, want)
 	}

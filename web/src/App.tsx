@@ -7,6 +7,8 @@ import { NewVPS } from "./pages/NewVPS";
 import { VPSDetail } from "./pages/VPSDetail";
 import { NewApp } from "./pages/NewApp";
 import { AppDetail } from "./pages/AppDetail";
+import { Remote } from "./pages/Remote";
+import { SetupWizard, wizardActive } from "./pages/SetupWizard";
 
 export default function App() {
   const setup = useQuery({ queryKey: ["setup"], queryFn: api.setupStatus });
@@ -18,7 +20,7 @@ export default function App() {
   if (setup.error) {
     return <div className="p-10 text-center text-rose-600">Cannot reach lpsd: {String(setup.error)}</div>;
   }
-  if (setup.data?.needsSetup) return <AuthPage mode="setup" />;
+  if (setup.data?.needsSetup || wizardActive()) return <SetupWizard />;
   if (me.error instanceof ApiError && me.error.status === 401) return <AuthPage mode="login" />;
 
   return (
@@ -31,6 +33,7 @@ export default function App() {
           <Route path="/vps/:id" element={<VPSDetail />} />
           <Route path="/apps/new" element={<NewApp />} />
           <Route path="/apps/:id" element={<AppDetail />} />
+          <Route path="/remote" element={<Remote />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -48,8 +51,11 @@ function Header({ username }: { username?: string }) {
           <span className="grid h-7 w-7 place-items-center rounded-md bg-indigo-600 text-xs font-bold text-white">LPS</span>
           <span className="hidden sm:inline">Local Personal Server</span>
         </Link>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-slate-500 dark:text-slate-400">{username}</span>
+        <div className="flex items-center gap-4 text-sm">
+          <Link to="/remote" className="text-indigo-600 hover:underline dark:text-indigo-400">
+            Remote access
+          </Link>
+          <span className="hidden text-slate-500 sm:inline dark:text-slate-400">{username}</span>
           <button
             className="text-indigo-600 hover:underline dark:text-indigo-400"
             onClick={async () => {

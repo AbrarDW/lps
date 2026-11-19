@@ -35,6 +35,8 @@ type vpsView struct {
 	Error string `json:"error,omitempty"`
 	// ProvisionLog is the tail of the provisioning output while provisioning or after a failure.
 	ProvisionLog string `json:"provisionLog,omitempty"`
+	// RemoteSSH is the SSH command over the tailnet, when remote access is active.
+	RemoteSSH string `json:"remoteSsh,omitempty"`
 }
 
 type createVPSReq struct {
@@ -89,6 +91,11 @@ func (req *createVPSReq) validate() error {
 
 func (s *Server) vpsView(r *http.Request, v *store.VPS) vpsView {
 	view := vpsView{VPS: v}
+	if dns, active := s.remoteSnapshot(r.Context()); dns != "" {
+		if _, ok := active[v.SSHPort]; ok {
+			view.RemoteSSH = fmt.Sprintf("ssh %s@%s -p %d", v.SSHUser, dns, v.SSHPort)
+		}
+	}
 	s.mu.Lock()
 	t := s.vpsTasks[v.ID]
 	s.mu.Unlock()
@@ -172,6 +179,7 @@ func (s *Server) handleCreateVPS(w http.ResponseWriter, r *http.Request) {
 			delete(s.vpsTasks, v.ID)
 		}
 	}()
+	s.kickRemote()
 	writeJSON(w, http.StatusAccepted, s.vpsView(r, v))
 }
 
@@ -275,6 +283,7 @@ func (s *Server) handleDeleteVPS(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	delete(s.vpsTasks, v.ID)
 	s.mu.Unlock()
+	s.kickRemote()
 	w.WriteHeader(http.StatusNoContent)
 }
 

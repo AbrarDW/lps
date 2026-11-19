@@ -5,16 +5,6 @@ import { Button, Card, ErrorBox, Field, Input } from "../components/ui";
 
 export function AuthPage({ mode }: { mode: "setup" | "login" }) {
   const qc = useQueryClient();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [localError, setLocalError] = useState("");
-
-  const m = useMutation({
-    mutationFn: () => (mode === "setup" ? api.setup(username, password) : api.login(username, password)),
-    onSuccess: () => qc.invalidateQueries(),
-  });
-
   return (
     <div className="grid min-h-screen place-items-center px-4">
       <div className="w-full max-w-sm space-y-4">
@@ -28,42 +18,59 @@ export function AuthPage({ mode }: { mode: "setup" | "login" }) {
           </p>
         </div>
         <Card>
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setLocalError("");
-              if (mode === "setup" && password !== confirm) {
-                setLocalError("Passwords do not match");
-                return;
-              }
-              m.mutate();
-            }}
-          >
-            <Field label="Username">
-              <Input autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-            </Field>
-            <Field label="Password" hint={mode === "setup" ? "At least 10 characters." : undefined}>
-              <Input
-                type="password"
-                autoComplete={mode === "setup" ? "new-password" : "current-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </Field>
-            {mode === "setup" && (
-              <Field label="Confirm password">
-                <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-              </Field>
-            )}
-            <ErrorBox error={localError || m.error} />
-            <Button type="submit" className="w-full" disabled={m.isPending}>
-              {m.isPending ? "Please wait…" : mode === "setup" ? "Create admin account" : "Sign in"}
-            </Button>
-          </form>
+          <CredentialsForm mode={mode} onDone={() => qc.invalidateQueries()} />
         </Card>
       </div>
     </div>
+  );
+}
+
+/** Username/password form used for login and for creating the first admin. */
+export function CredentialsForm({ mode, onDone }: { mode: "setup" | "login"; onDone: () => void }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [localError, setLocalError] = useState("");
+
+  const m = useMutation({
+    mutationFn: () => (mode === "setup" ? api.setup(username, password) : api.login(username, password)),
+    onSuccess: onDone,
+  });
+
+  return (
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setLocalError("");
+          if (mode === "setup" && password !== confirm) {
+            setLocalError("Passwords do not match");
+            return;
+          }
+          m.mutate();
+        }}
+      >
+        <Field label="Username">
+          <Input autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+        </Field>
+        <Field label="Password" hint={mode === "setup" ? "At least 10 characters." : undefined}>
+          <Input
+            type="password"
+            autoComplete={mode === "setup" ? "new-password" : "current-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </Field>
+        {mode === "setup" && (
+          <Field label="Confirm password">
+            <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+          </Field>
+        )}
+        <ErrorBox error={localError || m.error} />
+        <Button type="submit" className="w-full" disabled={m.isPending}>
+          {m.isPending ? "Please wait…" : mode === "setup" ? "Create admin account" : "Sign in"}
+        </Button>
+      </form>
   );
 }

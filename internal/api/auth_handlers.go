@@ -103,7 +103,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, userID int
 	_ = s.store.DeleteExpiredSessions(r.Context())
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/", Expires: exp,
-		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.cfg.SecureCookies || r.TLS != nil,
+		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.cfg.SecureCookies || isHTTPS(r),
 	})
 	return nil
 }
