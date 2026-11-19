@@ -1,1 +1,74 @@
 @import "tailwindcss";
+
+/* Fonts are bundled (no Google Fonts): the dashboard works offline and the
+   Content-Security-Policy can stay 'self'-only. */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+
+/* Blueprint theme: Blueprint.js structure on blueprint paper.
+   See the "Style sheet" mockup for the reference values. */
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-bp: 3px;
+
+  --color-ground-deep: #071b31;
+  --color-ground: #0a2440;
+  --color-panel: #0e2d4e;
+  --color-panel-head: #12365c;
+  --color-line: #24507f;
+  --color-line-soft: #1b4068;
+  --color-line-strong: #3a6ea5;
+  --color-cyan: #5cc8ff;
+  --color-cyan-soft: #9adcff;
+  --color-primary: #2d72d2;
+  --color-primary-line: #4c90f0;
+  --color-ink: #e6f0fa;
+  --color-ink-2: #bfd3e8;
+  --color-ink-muted: #a9c1da;
+  --color-ink-faint: #8fafd0;
+  --color-success: #32a467;
+  --color-success-ink: #8ed9b0;
+  --color-warning: #ec9a3c;
+  --color-warning-ink: #fbc27e;
+  --color-danger: #cd4246;
+  --color-danger-ink: #fba9ab;
+  --color-term: #020b16;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-ground text-ink font-sans text-sm antialiased;
+    line-height: 1.45;
+    min-height: 100vh;
+    /* Dotted blueprint paper: a dot every 24px, a brighter dot every 120px. */
+    background-image:
+      radial-gradient(circle, rgba(127, 190, 255, 0.3) 1.3px, transparent 1.5px),
+      radial-gradient(circle, rgba(127, 190, 255, 0.14) 1px, transparent 1.2px);
+    background-size: 120px 120px, 24px 24px;
+    background-position: -60px -60px, -12px -12px;
+  }
+  a {
+    @apply text-cyan hover:text-cyan-soft;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 1px;
+  }
+  ::selection {
+    background: rgba(92, 200, 255, 0.35);
+  }
+}
+
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}

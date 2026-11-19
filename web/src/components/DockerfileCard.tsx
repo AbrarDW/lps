@@ -4,7 +4,7 @@ import { api } from "../api";
 import { Button, Card, ErrorBox, LogView, TextArea } from "./ui";
 
 /** Shows the Dockerfile an app builds with, and lets the user edit an LPS-managed one. */
-export function DockerfileCard({ appId, deploying }: { appId: number; deploying?: boolean }) {
+export function DockerfileCard({ appId, deploying, bare }: { appId: number; deploying?: boolean; bare?: boolean }) {
   const qc = useQueryClient();
   const df = useQuery({ queryKey: ["apps", appId, "dockerfile"], queryFn: () => api.appDockerfile(appId) });
   const [text, setText] = useState("");
@@ -27,12 +27,11 @@ export function DockerfileCard({ appId, deploying }: { appId: number; deploying?
   const lps = d.source === "lps";
   const dirty = lps ? text !== d.dockerfile : true;
 
-  return (
-    <Card title="Dockerfile">
+  const body = (
       <div className="space-y-3 text-sm">
         {lps ? (
           <>
-            <p className="text-slate-600 dark:text-slate-300">
+            <p className="text-ink-muted">
               Stored in LPS (your project folder is not changed). Edit it and press <b>Save &amp; redeploy</b>.
             </p>
             <TextArea
@@ -69,14 +68,14 @@ export function DockerfileCard({ appId, deploying }: { appId: number; deploying?
           </>
         ) : d.projectHasDockerfile ? (
           <>
-            <p className="text-slate-600 dark:text-slate-300">
+            <p className="text-ink-muted">
               Using the <code>Dockerfile</code> in your project folder. Edit it in your editor, then press <b>Redeploy</b>.
             </p>
-            <LogView text={d.dockerfile} />
+            <LogView text={d.dockerfile} className="!max-h-[28rem]" />
           </>
         ) : (
           <>
-            <p className="text-amber-700 dark:text-amber-300">
+            <p className="text-warning-ink">
               The project folder no longer has a Dockerfile. Save this generated one in LPS to keep deploying.
             </p>
             <TextArea aria-label="Dockerfile" rows={12} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} />
@@ -87,6 +86,6 @@ export function DockerfileCard({ appId, deploying }: { appId: number; deploying?
         )}
         <ErrorBox error={save.error} />
       </div>
-    </Card>
   );
+  return bare ? body : <Card title="Dockerfile">{body}</Card>;
 }

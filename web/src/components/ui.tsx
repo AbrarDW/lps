@@ -1,121 +1,213 @@
 import { useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import type { State } from "../api";
 
-export function Card({ title, actions, children }: { title?: ReactNode; actions?: ReactNode; children: ReactNode }) {
+/* ---------- Layout ---------- */
+
+/** Cyan registration marks on two corners of a primary panel (blueprint motif). */
+export function CornerMarks() {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <>
+      <span aria-hidden="true" className="pointer-events-none absolute -top-px -left-px size-2.5 border-t-2 border-l-2 border-cyan" />
+      <span aria-hidden="true" className="pointer-events-none absolute -right-px -bottom-px size-2.5 border-r-2 border-b-2 border-cyan" />
+    </>
+  );
+}
+
+/**
+ * Panel with a header strip (Blueprint.js card). `title` is shown as a mono
+ * label; `marks` adds corner registration marks; `tone="danger"` for the
+ * danger zone.
+ */
+export function Card({
+  title,
+  actions,
+  children,
+  marks,
+  tone,
+  flush,
+  className = "",
+}: {
+  title?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+  marks?: boolean;
+  tone?: "danger";
+  /** No body padding (tables, lists, tabs). */
+  flush?: boolean;
+  className?: string;
+}) {
+  const danger = tone === "danger";
+  return (
+    <section className={`relative min-w-0 rounded-bp border bg-panel ${danger ? "border-danger/55" : "border-line"} ${className}`}>
+      {marks && <CornerMarks />}
       {(title || actions) && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          {title && <h2 className="text-lg font-semibold">{title}</h2>}
-          {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+        <div
+          className={`flex min-h-11 flex-wrap items-center justify-between gap-2 border-b px-4 py-1.5 ${
+            danger ? "border-danger/40 bg-danger/12" : "border-line bg-panel-head"
+          }`}
+        >
+          {title && <h2 className={`label-mono m-0 font-medium ${danger ? "text-danger-ink" : "text-ink"}`}>{title}</h2>}
+          {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
         </div>
       )}
-      {children}
+      <div className={flush ? "" : "p-4"}>{children}</div>
     </section>
   );
 }
 
-type Variant = "primary" | "secondary" | "danger";
+/** Page title block: mono sheet label, title, and a dimension line. */
+export function PageHeader({
+  sheet,
+  title,
+  subtitle,
+  actions,
+  children,
+}: {
+  sheet?: string;
+  title: ReactNode;
+  subtitle?: ReactNode;
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <section className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex min-w-0 flex-col gap-1.5">
+        {sheet && <span className="label-mono text-cyan">{sheet}</span>}
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="m-0 text-[28px] font-semibold tracking-tight">{title}</h1>
+          {children}
+        </div>
+        {subtitle && <div className="max-w-2xl text-ink-muted">{subtitle}</div>}
+        <DimensionLine className="w-56" />
+      </div>
+      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+    </section>
+  );
+}
+
+/** A technical-drawing dimension line: a rule with end ticks. */
+export function DimensionLine({ className = "", label }: { className?: string; label?: string }) {
+  return (
+    <span className={`flex items-center gap-2 font-mono text-[10px] text-ink-faint ${className}`} aria-hidden="true">
+      <span
+        className="h-[7px] flex-1 border-x border-line-strong"
+        style={{ background: "linear-gradient(var(--color-line-strong), var(--color-line-strong)) center / 100% 1px no-repeat" }}
+      />
+      {label && <span>{label}</span>}
+    </span>
+  );
+}
+
+/** Drawing-sheet title block used as a page footer. */
+export function TitleBlock({ cells }: { cells: string[] }) {
+  return (
+    <footer className="flex self-end border border-line-strong font-mono text-[11px] text-ink-muted">
+      {cells.map((c, i) => (
+        <span key={c} className={`px-3 py-1.5 ${i < cells.length - 1 ? "border-r border-line-strong" : ""}`}>
+          {c}
+        </span>
+      ))}
+    </footer>
+  );
+}
+
+/** Tab strip for a panel header (Blueprint.js tabs). */
+export function Tabs<T extends string>({
+  tabs,
+  value,
+  onChange,
+  label,
+  right,
+}: {
+  tabs: { id: T; label: string }[];
+  value: T;
+  onChange: (id: T) => void;
+  label: string;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-stretch justify-between gap-2 border-b border-line bg-panel-head pr-3 pl-1">
+      <div role="tablist" aria-label={label} className="flex flex-wrap">
+        {tabs.map((t) => {
+          const on = t.id === value;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => onChange(t.id)}
+              className={`label-mono min-h-11 cursor-pointer border-0 border-b-2 bg-transparent px-3.5 ${
+                on ? "border-cyan text-white" : "border-transparent text-ink-muted hover:text-ink"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+      {right && <div className="flex flex-wrap items-center gap-1.5 py-1.5">{right}</div>}
+    </div>
+  );
+}
+
+/* ---------- Controls ---------- */
+
+type Variant = "primary" | "secondary" | "minimal" | "danger";
 const variants: Record<Variant, string> = {
-  primary: "bg-indigo-600 text-white hover:bg-indigo-500",
-  secondary:
-    "border border-slate-300 bg-white text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
-  danger: "bg-rose-600 text-white hover:bg-rose-500",
+  primary: "bg-primary border-primary-line text-white hover:bg-[#3a80e0]",
+  secondary: "bg-white/5 border-line-strong text-ink hover:bg-white/10",
+  minimal: "bg-transparent border-transparent text-cyan-soft hover:bg-white/5",
+  danger: "bg-danger border-[#e76a6e] text-white hover:bg-[#db5458]",
 };
 
-export function Button({ variant = "primary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+export function Button({
+  variant = "primary",
+  size = "md",
+  className = "",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: "sm" | "md" }) {
   return (
     <button
+      type="button"
       {...props}
-      className={`inline-flex items-center justify-center rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-bp border font-medium transition-colors disabled:cursor-not-allowed disabled:border-[#2f5f92] disabled:bg-[#1e4b7c] disabled:text-ink-faint ${
+        size === "sm" ? "h-[30px] px-2.5 text-[13px]" : "h-9 px-3.5"
+      } ${variants[variant]} ${className}`}
     />
   );
 }
 
+/** Same look as Button for router links (`<Link className={buttonClass()}>`). */
+export function buttonClass(variant: Variant = "primary", size: "sm" | "md" = "md") {
+  return `inline-flex items-center justify-center gap-2 rounded-bp border font-medium no-underline transition-colors ${
+    size === "sm" ? "h-[30px] px-2.5 text-[13px]" : "h-9 px-3.5"
+  } ${variants[variant]} hover:text-white`;
+}
+
 export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium">{label}</span>
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[13px] font-medium">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{hint}</span>}
+      {hint && <span className="text-xs text-ink-muted">{hint}</span>}
     </label>
   );
 }
 
 const inputCls =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 dark:border-slate-700 dark:bg-slate-950";
+  "w-full rounded-bp border border-[#2f5f92] bg-ground-deep px-2.5 text-ink outline-none placeholder:text-ink-faint focus:border-cyan focus:ring-2 focus:ring-cyan/25";
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`${inputCls} ${props.className ?? ""}`} />;
+  return <input {...props} className={`${inputCls} h-[34px] ${props.className ?? ""}`} />;
 }
 
 export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`${inputCls} font-mono ${props.className ?? ""}`} />;
+  return <textarea {...props} className={`${inputCls} py-2 font-mono text-[13px] leading-relaxed ${props.className ?? ""}`} />;
 }
 
-const stateStyle: Record<string, string> = {
-  running: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300",
-  active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300",
-  pending: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300",
-  stopped: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  missing: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  provisioning: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300",
-  building: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300",
-  error: "bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300",
-  failed: "bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300",
-};
-
-export function StateBadge({ state }: { state: State | string }) {
-  const label = state === "missing" ? "not deployed" : state;
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${stateStyle[state] ?? stateStyle.stopped}`}>
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {label}
-    </span>
-  );
-}
-
-export function ErrorBox({ error }: { error: unknown }) {
-  if (!error) return null;
-  return (
-    <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
-      {error instanceof Error ? error.message : String(error)}
-    </div>
-  );
-}
-
-export function LogView({ text, empty = "No output yet." }: { text?: string; empty?: string }) {
-  return (
-    <pre className="max-h-96 overflow-auto rounded-lg bg-slate-950 p-3 text-xs leading-relaxed text-slate-200 whitespace-pre-wrap break-all">
-      {text?.trim() ? text : empty}
-    </pre>
-  );
-}
-
-export function CopyField({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="flex items-stretch gap-2">
-      <code className="flex-1 overflow-x-auto rounded-lg bg-slate-100 px-3 py-2 text-sm dark:bg-slate-800">{value}</code>
-      <Button
-        variant="secondary"
-        onClick={() => {
-          navigator.clipboard?.writeText(value).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          });
-        }}
-      >
-        {copied ? "Copied" : "Copy"}
-      </Button>
-    </div>
-  );
-}
-
-export function formatLimits(cpus: number, memoryMb: number) {
-  const c = cpus > 0 ? `${cpus} CPU` : "unlimited CPU";
-  const m = memoryMb > 0 ? (memoryMb >= 1024 ? `${(memoryMb / 1024).toFixed(1)} GB` : `${memoryMb} MB`) : "unlimited RAM";
-  return `${c} · ${m}`;
+export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...props} className={`${inputCls} h-[34px] ${props.className ?? ""}`} />;
 }
 
 export function Switch({
@@ -137,24 +229,185 @@ export function Switch({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "border-primary-line bg-primary" : "border-line-strong bg-ground-deep"
       }`}
     >
-      <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
+      <span className={`inline-block size-4 rounded-full bg-white shadow transition ${checked ? "translate-x-[17px]" : "translate-x-[1px]"}`} />
     </button>
   );
 }
 
+/* ---------- Status ---------- */
+
+type Intent = "success" | "neutral" | "primary" | "warning" | "danger";
+const intents: Record<Intent, { box: string; dot: string }> = {
+  success: { box: "bg-success/18 text-success-ink", dot: "bg-[#72ca9b]" },
+  neutral: { box: "bg-ink-faint/16 text-ink-2", dot: "bg-ink-faint" },
+  primary: { box: "bg-primary/22 text-cyan-soft", dot: "bg-cyan" },
+  warning: { box: "bg-warning/18 text-warning-ink", dot: "bg-warning-ink" },
+  danger: { box: "bg-danger/20 text-danger-ink", dot: "bg-[#fa999c]" },
+};
+
+/** Blueprint.js-style tag: small, square, mono, intent colour. */
+export function Tag({ intent = "neutral", dot, children }: { intent?: Intent; dot?: boolean; children: ReactNode }) {
+  const c = intents[intent];
+  return (
+    <span className={`inline-flex h-5 items-center gap-1.5 rounded-[2px] px-[7px] font-mono text-[11px] whitespace-nowrap uppercase ${c.box}`}>
+      {dot && <span className={`size-1.5 rounded-full ${c.dot}`} />}
+      {children}
+    </span>
+  );
+}
+
+const stateIntent: Record<string, Intent> = {
+  running: "success",
+  active: "success",
+  stopped: "neutral",
+  missing: "neutral",
+  provisioning: "primary",
+  building: "primary",
+  pending: "primary",
+  error: "danger",
+  failed: "danger",
+};
+
+export function StateBadge({ state }: { state: State | string }) {
+  const label = state === "missing" ? "not deployed" : state;
+  return (
+    <Tag intent={stateIntent[state] ?? "neutral"} dot>
+      {label}
+    </Tag>
+  );
+}
+
+/** Callout box (Blueprint.js callout). */
+export function Callout({ intent = "primary", children }: { intent?: "primary" | "warning" | "danger"; children: ReactNode }) {
+  const cls = {
+    primary: "border-cyan/45 bg-primary/12 text-[#cfe9ff]",
+    warning: "border-warning-ink/45 bg-warning/10 text-[#fcd9ae]",
+    danger: "border-[#fa999c]/45 bg-danger/12 text-[#fdd3d4]",
+  }[intent];
+  return <div className={`rounded-[2px] border px-3.5 py-3 text-[13px] ${cls}`}>{children}</div>;
+}
+
+export function ErrorBox({ error }: { error: unknown }) {
+  if (!error) return null;
+  return <Callout intent="danger">{error instanceof Error ? error.message : String(error)}</Callout>;
+}
+
 export function ActionBox({ message, url, linkText = "Open" }: { message: string; url?: string; linkText?: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-      <span>{message}</span>
-      {url && (
-        <a href={url} target="_blank" rel="noreferrer" className="font-medium underline">
-          {linkText} ↗
-        </a>
-      )}
+    <Callout intent="warning">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span>{message}</span>
+        {url && (
+          <a href={url} target="_blank" rel="noreferrer" className="font-medium text-warning-ink underline hover:text-white">
+            {linkText} ↗
+          </a>
+        )}
+      </div>
+    </Callout>
+  );
+}
+
+/* ---------- Data display ---------- */
+
+export function LogView({ text, empty = "No output yet.", className = "" }: { text?: string; empty?: string; className?: string }) {
+  return (
+    <pre
+      className={`m-0 max-h-96 overflow-auto rounded-[2px] border border-line-soft bg-term p-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-[#d7e3ef] ${className}`}
+    >
+      {text?.trim() ? text : empty}
+    </pre>
+  );
+}
+
+export function CopyField({ value, label = "Copy" }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex min-w-0">
+      <code className="flex h-[34px] min-w-0 flex-1 items-center overflow-x-auto rounded-l-bp border border-r-0 border-[#2f5f92] bg-ground-deep px-2.5 font-mono text-xs whitespace-nowrap">
+        {value}
+      </code>
+      <button
+        type="button"
+        aria-label={`${label}: ${value}`}
+        onClick={() => {
+          navigator.clipboard?.writeText(value).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+        className="h-[34px] shrink-0 cursor-pointer rounded-r-bp border border-[#2f5f92] bg-panel-head px-3 text-[13px] text-ink hover:bg-[#184371]"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
     </div>
+  );
+}
+
+/** Label/value grid used for specifications. */
+export function SpecGrid({ items }: { items: { label: string; value: ReactNode }[] }) {
+  return (
+    <dl className="m-0 grid grid-cols-2 text-[13px]">
+      {items.map((it, i) => (
+        <div
+          key={it.label}
+          className={`border-line-soft px-4 py-2.5 ${i % 2 === 0 ? "border-r" : ""} ${i < items.length - (items.length % 2 === 0 ? 2 : 1) ? "border-b" : ""}`}
+        >
+          <dt className="font-mono text-[10px] tracking-[0.1em] text-ink-faint uppercase">{it.label}</dt>
+          <dd className="m-0 mt-0.5">{it.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function formatLimits(cpus: number, memoryMb: number) {
+  const c = cpus > 0 ? `${cpus} CPU` : "unlimited CPU";
+  const m = memoryMb > 0 ? (memoryMb >= 1024 ? `${(memoryMb / 1024).toFixed(1)} GB` : `${memoryMb} MB`) : "unlimited RAM";
+  return `${c} · ${m}`;
+}
+
+/* ---------- Icons (inline stroke SVG) ---------- */
+
+const icons = {
+  plus: "M8 3v10M3 8h10",
+  terminal: "M3 5l3 3-3 3M8 11h5",
+  stop: "",
+  play: "",
+  restart: "M13 8a5 5 0 1 1-1.5-3.5M13 3v3h-3",
+  deploy: "M8 2v8M4.5 6.5L8 10l3.5-3.5M3 13h10",
+  fullscreen: "M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4",
+  chevron: "M4 6l4 4 4-4",
+  search: "",
+  app: "M2 3h12v10H2zM5 7l2 2-2 2M9 11h3",
+} as const;
+
+export function Icon({ name, size = 14 }: { name: keyof typeof icons; size?: number }) {
+  if (name === "stop")
+    return (
+      <svg aria-hidden="true" width={size - 2} height={size - 2} viewBox="0 0 16 16" fill="currentColor">
+        <rect x="3" y="3" width="10" height="10" rx="1" />
+      </svg>
+    );
+  if (name === "play")
+    return (
+      <svg aria-hidden="true" width={size - 2} height={size - 2} viewBox="0 0 16 16" fill="currentColor">
+        <path d="M5 3l8 5-8 5z" />
+      </svg>
+    );
+  if (name === "search")
+    return (
+      <svg aria-hidden="true" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5L14 14" />
+      </svg>
+    );
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d={icons[name]} />
+    </svg>
   );
 }

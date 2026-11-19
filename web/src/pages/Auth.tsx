@@ -9,9 +9,9 @@ export function AuthPage({ mode }: { mode: "setup" | "login" }) {
     <div className="grid min-h-screen place-items-center px-4">
       <div className="w-full max-w-sm space-y-4">
         <div className="text-center">
-          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-indigo-600 font-bold text-white">LPS</div>
+          <div className="mx-auto mb-3 grid size-13 place-items-center rounded-bp border-2 border-cyan font-mono text-[15px] font-medium text-cyan">LPS</div>
           <h1 className="text-xl font-semibold">{mode === "setup" ? "Welcome to LPS" : "Sign in"}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-[13px] text-ink-muted">
             {mode === "setup"
               ? "Create the admin account. Use a strong password: this dashboard can be reached from the internet."
               : "Local Personal Server dashboard"}

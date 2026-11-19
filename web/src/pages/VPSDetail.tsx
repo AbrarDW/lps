@@ -2,7 +2,20 @@ import { lazy, Suspense, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, displayHost } from "../api";
-import { Button, Card, CopyField, ErrorBox, LogView, StateBadge, formatLimits } from "../components/ui";
+import {
+  Button,
+  Callout,
+  Card,
+  CopyField,
+  CornerMarks,
+  ErrorBox,
+  Icon,
+  LogView,
+  SpecGrid,
+  StateBadge,
+  Tabs,
+  formatLimits,
+} from "../components/ui";
 
 // xterm.js is only downloaded when a terminal is opened.
 const VPSTerminal = lazy(() => import("../components/VPSTerminal"));
@@ -18,7 +31,6 @@ export function VPSDetail() {
     queryFn: () => api.getVPS(id),
     refetchInterval: (q) => (q.state.data?.state === "provisioning" ? 2000 : 5000),
   });
-  const logs = useQuery({ queryKey: ["vps", id, "logs"], queryFn: () => api.vpsLogs(id), enabled: !!vps.data?.containerId });
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["vps"] });
@@ -29,11 +41,11 @@ export function VPSDetail() {
     onSuccess: () => {
       qc.removeQueries({ queryKey: ["vps", id] });
       refresh();
-      nav("/");
+      nav("/vps");
     },
   });
 
-  if (vps.isLoading) return <p className="text-slate-500">Loading…</p>;
+  if (vps.isLoading) return <p className="label-mono text-ink-faint">Loading…</p>;
   if (vps.error || !vps.data) return <ErrorBox error={vps.error ?? "not found"} />;
   const v = vps.data;
   const host = displayHost(system.data?.bindIp);
@@ -42,178 +54,211 @@ export function VPSDetail() {
 
   return (
     <>
-      <Card
-        title={
-          <span className="flex items-center gap-3">
-            {v.name} <StateBadge state={v.state} />
-          </span>
-        }
-        actions={
-          <>
-            {v.state === "running" ? (
-              <Button variant="secondary" disabled={busy} onClick={() => action.mutate("stop")}>
-                Stop
-              </Button>
-            ) : (
-              <Button variant="secondary" disabled={busy || !v.containerId} onClick={() => action.mutate("start")}>
-                Start
-              </Button>
-            )}
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <ErrorBox error={action.error ?? v.error} />
-          {v.state === "provisioning" && (
-            <p className="text-sm text-sky-700 dark:text-sky-300">
-              Provisioning… The first VPS builds the Ubuntu image, which can take a few minutes.
-            </p>
+      <nav aria-label="Breadcrumb" className="flex gap-2 font-mono text-xs text-ink-faint uppercase">
+        <Link to="/vps" className="no-underline">
+          VPSes
+        </Link>
+        <span aria-hidden="true">/</span>
+        <span className="text-ink">{v.name}</span>
+      </nav>
+
+      <section className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="m-0 text-[28px] font-semibold">{v.name}</h1>
+          <StateBadge state={v.state} />
+          <span className="font-mono text-xs text-ink-faint">ubuntu-24.04 · lps-vps-{v.name}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {v.state === "running" ? (
+            <Button variant="secondary" disabled={busy} onClick={() => action.mutate("stop")}>
+              <Icon name="stop" />
+              Stop
+            </Button>
+          ) : (
+            <Button variant="secondary" disabled={busy || !v.containerId} onClick={() => action.mutate("start")}>
+              <Icon name="play" />
+              Start
+            </Button>
           )}
-          {v.provisionLog && <LogView text={v.provisionLog} />}
-          {v.remoteSsh && (
-            <div>
-              <div className="mb-1 text-sm font-medium">Connect from anywhere (Tailscale)</div>
-              <CopyField value={v.remoteSsh} />
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Only works on devices with the Tailscale app installed and signed in to the same account. The error
-                "Could not resolve hostname" means the device you are using is not on your tailnet.
-              </p>
-            </div>
-          )}
-          <div>
-            <div className="mb-1 text-sm font-medium">{v.remoteSsh ? "Connect on this PC" : "Connect with SSH"}</div>
-            <CopyField value={sshCmd} />
-            {!v.remoteSsh && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Published on {system.data?.bindIp ?? "127.0.0.1"}:{v.sshPort}. To connect when you are away, turn on{" "}
-                <Link to="/remote" className="text-indigo-600 underline dark:text-indigo-400">
-                  remote access
-                </Link>
-                .
-              </p>
-            )}
-          </div>
-          <dl className="grid gap-3 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-slate-500 dark:text-slate-400">User</dt>
-              <dd>{v.sshUser}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500 dark:text-slate-400">Limits</dt>
-              <dd>{formatLimits(v.cpus, v.memoryMb)}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500 dark:text-slate-400">Auth</dt>
-              <dd>{v.sshPublicKey ? "SSH key" : "password"}</dd>
-            </div>
-          </dl>
         </div>
-      </Card>
+      </section>
 
-      <TerminalCard vpsId={v.id} running={v.state === "running"} user={v.sshUser} />
+      <ErrorBox error={action.error ?? v.error} />
+      {v.state === "provisioning" && (
+        <Callout>
+          <b>Provisioning…</b> The first VPS builds the Ubuntu image, which can take a few minutes.
+        </Callout>
+      )}
+      {v.provisionLog && <LogView text={v.provisionLog} />}
 
-      <Card
-        title="Logs"
-        actions={
-          <Button variant="secondary" onClick={() => logs.refetch()}>
-            Refresh
-          </Button>
-        }
-      >
-        <ErrorBox error={logs.error} />
-        <LogView text={logs.data?.logs} />
-      </Card>
-
-      <Card title="Danger zone">
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={keepData} onChange={(e) => setKeepData(e.target.checked)} />
-            Keep the /home volume (re-creating a VPS with the same name reuses it)
-          </label>
-          <Button
-            variant="danger"
-            disabled={del.isPending || v.state === "provisioning"}
-            onClick={() => {
-              if (confirm(`Delete VPS "${v.name}"?${keepData ? "" : " All files in /home will be lost."}`)) del.mutate();
-            }}
-          >
-            Delete VPS
-          </Button>
+      <section className="flex flex-wrap items-start gap-5">
+        <div className="min-w-0 flex-[999_1_640px]">
+          <ShellPanel vpsId={v.id} running={v.state === "running"} user={v.sshUser} hasContainer={!!v.containerId} />
         </div>
-        <div className="mt-3">
-          <ErrorBox error={del.error} />
-        </div>
-      </Card>
+
+        <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
+          <Card title="Connect with SSH">
+            <div className="flex flex-col gap-3.5">
+              {v.remoteSsh && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs text-ink-muted">From anywhere (Tailscale)</span>
+                  <CopyField value={v.remoteSsh} />
+                  <span className="text-xs text-ink-faint">
+                    Only works on devices signed in to your Tailscale account. "Could not resolve hostname" means this device isn't on your tailnet.
+                  </span>
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-ink-muted">On this PC</span>
+                <CopyField value={sshCmd} />
+                {!v.remoteSsh && (
+                  <span className="text-xs text-ink-faint">
+                    To connect when you're away, turn on <Link to="/remote">remote access</Link>.
+                  </span>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Specification" flush>
+            <SpecGrid
+              items={[
+                { label: "User", value: `${v.sshUser} · ${v.sshPublicKey ? "SSH key" : "password"}` },
+                { label: "Image", value: "Ubuntu 24.04" },
+                { label: "Limits", value: formatLimits(v.cpus, v.memoryMb) },
+                { label: "SSH port", value: <span className="font-mono">{v.sshPort}</span> },
+                { label: "/home volume", value: "persistent" },
+                { label: "Published on", value: <span className="font-mono">{system.data?.bindIp ?? "127.0.0.1"}</span> },
+              ]}
+            />
+          </Card>
+
+          <Card title="Danger zone" tone="danger">
+            <div className="flex flex-col gap-3 text-[13px]">
+              <label className="flex items-start gap-2 text-ink-2">
+                <input type="checkbox" className="mt-1 accent-[#2d72d2]" checked={keepData} onChange={(e) => setKeepData(e.target.checked)} />
+                Keep the /home volume (re-creating a VPS with the same name reuses it)
+              </label>
+              <Button
+                variant="danger"
+                className="self-start"
+                disabled={del.isPending || v.state === "provisioning"}
+                onClick={() => {
+                  if (confirm(`Delete VPS "${v.name}"?${keepData ? "" : " All files in /home will be lost."}`)) del.mutate();
+                }}
+              >
+                Delete VPS
+              </Button>
+              <ErrorBox error={del.error} />
+            </div>
+          </Card>
+        </aside>
+      </section>
     </>
   );
 }
 
-function TerminalCard({ vpsId, running, user }: { vpsId: number; running: boolean; user: string }) {
+/** Terminal + logs, as tabs in one panel. */
+function ShellPanel({ vpsId, running, user, hasContainer }: { vpsId: number; running: boolean; user: string; hasContainer: boolean }) {
+  const [tab, setTab] = useState<"terminal" | "logs">("terminal");
   const [session, setSession] = useState(0); // 0 = closed; bump to reconnect
   const [full, setFull] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState<"connecting" | "connected" | "closed">("connecting");
+  const logs = useQuery({ queryKey: ["vps", vpsId, "logs"], queryFn: () => api.vpsLogs(vpsId), enabled: hasContainer && tab === "logs" });
   const open = session > 0;
+  const fs = full && open && tab === "terminal";
 
-  const actions = (
-    <>
-      {open && connected && (
-        <Button variant="secondary" onClick={() => setFull(!full)}>
-          {full ? "Exit full screen" : "Full screen"}
-        </Button>
-      )}
-      {open ? (
-        <>
-          {!connected && (
-            <Button variant="secondary" disabled={!running} onClick={() => setSession(session + 1)}>
-              Reconnect
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setSession(0);
-              setFull(false);
-            }}
-          >
-            Close
+  const right =
+    tab === "terminal" ? (
+      <>
+        {open && (
+          <span className={`flex items-center gap-1.5 font-mono text-[11px] uppercase ${status === "connected" ? "text-success-ink" : "text-ink-faint"}`}>
+            <span className={`size-1.5 rounded-full ${status === "connected" ? "bg-[#72ca9b]" : "bg-ink-faint"}`} />
+            {status}
+          </span>
+        )}
+        {open && status === "connected" && (
+          <Button variant="secondary" size="sm" aria-label={full ? "Exit full screen" : "Full screen"} onClick={() => setFull(!full)}>
+            <Icon name="fullscreen" />
+            {full ? "Exit full screen" : "Full screen"}
           </Button>
-        </>
-      ) : (
-        <Button disabled={!running} onClick={() => setSession(1)}>
-          Open terminal
-        </Button>
-      )}
-    </>
-  );
-
-  const body = open ? (
-    <Suspense fallback={<p className="text-sm text-slate-500">Loading terminal…</p>}>
-      <VPSTerminal key={session} vpsId={vpsId} focusKey={full} onStatus={(st) => setConnected(st === "connected")} />
-    </Suspense>
-  ) : (
-    <p className="text-sm text-slate-500 dark:text-slate-400">
-      {running
-        ? `Open a shell in this VPS as ${user}, right here in the browser. Works from your phone too, over remote access.`
-        : "Start the VPS to open a terminal."}
-    </p>
-  );
+        )}
+        {open && (
+          <>
+            {status !== "connected" && (
+              <Button variant="secondary" size="sm" disabled={!running} onClick={() => setSession(session + 1)}>
+                Reconnect
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setSession(0);
+                setFull(false);
+              }}
+            >
+              Close
+            </Button>
+          </>
+        )}
+      </>
+    ) : (
+      <Button variant="secondary" size="sm" onClick={() => logs.refetch()}>
+        Refresh
+      </Button>
+    );
 
   // One element whether or not it is full screen: switching parents would
   // unmount the terminal and drop the shell session.
-  const fs = full && open;
   return (
-    <section
-      className={
-        fs
-          ? "fixed inset-0 z-50 flex flex-col bg-slate-950 p-3 text-slate-100"
-          : "rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-      }
-    >
-      <div className={`flex flex-wrap items-center justify-between gap-2 ${fs ? "mb-2" : "mb-4"}`}>
-        <h2 className={fs ? "text-sm text-slate-300" : "text-lg font-semibold"}>{fs ? `Terminal · ${user}` : "Terminal"}</h2>
-        <div className="flex flex-wrap gap-2">{actions}</div>
+    <section className={fs ? "fixed inset-0 z-50 flex flex-col bg-ground-deep p-3" : "relative rounded-bp border border-line bg-panel"}>
+      {!fs && <CornerMarks />}
+      <Tabs
+        label="VPS views"
+        tabs={[
+          { id: "terminal", label: "Terminal" },
+          { id: "logs", label: "Logs" },
+        ]}
+        value={tab}
+        onChange={(t) => {
+          setTab(t);
+          setFull(false);
+        }}
+        right={right}
+      />
+      {/* The terminal stays mounted while the Logs tab is shown, so switching tabs keeps the session. */}
+      <div className={tab === "terminal" ? (fs ? "min-h-0 flex-1 pt-3" : "p-3") : "hidden"}>
+        {open ? (
+          <div className={fs ? "h-full" : "h-[30rem]"}>
+            <Suspense fallback={<p className="label-mono text-ink-faint">Loading terminal…</p>}>
+              <VPSTerminal key={session} vpsId={vpsId} focusKey={`${full}-${tab}`} onStatus={(st) => setStatus(st)} />
+            </Suspense>
+          </div>
+        ) : (
+          <div className="grid h-[30rem] place-items-center rounded-[2px] border border-dashed border-line-strong bg-term/60 p-6 text-center">
+            <div className="flex max-w-sm flex-col items-center gap-3">
+              <span className="label-mono text-cyan">Shell · bash -l as {user}</span>
+              <p className="m-0 text-ink-muted">
+                {running
+                  ? "Open a shell in this VPS right here in the browser. Works from your phone too, over remote access."
+                  : "Start the VPS to open a terminal."}
+              </p>
+              <Button disabled={!running} onClick={() => setSession(1)}>
+                <Icon name="terminal" />
+                Open terminal
+              </Button>
+            </div>
+          </div>
+        )}
+        {!fs && <p className="label-mono m-0 mt-2 text-[10px] text-ink-faint">Shell as {user} · sessions are logged</p>}
       </div>
-      <div className={fs ? "min-h-0 flex-1" : open ? "h-[26rem]" : ""}>{body}</div>
+      {tab === "logs" && (
+        <div className="p-3">
+          <ErrorBox error={logs.error} />
+          <LogView text={logs.data?.logs} className="!max-h-[30rem] min-h-[30rem]" />
+        </div>
+      )}
     </section>
   );
 }
