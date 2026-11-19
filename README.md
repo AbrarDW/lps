@@ -110,15 +110,55 @@ A VPS here is a container, not a full VM. It shares the host's Linux kernel (WSL
 
 ```mermaid
 flowchart LR
-    a["Install Docker Desktop<br/>(WSL2 backend)"] --> b["Build lpsd<br/>make all"] --> c["Run<br/>lpsd serve"] --> d["Open 127.0.0.1:7070<br/>create admin"] --> e["New VPS / New app"]
+    a["Install Go, Node.js,<br/>Docker Desktop"] --> b["Build<br/>.\build.ps1"] --> c["Run<br/>.\bin\lpsd.exe serve"] --> d["Open 127.0.0.1:7070<br/>create admin"] --> e["New VPS / New app"]
 ```
 
-Requirements:
+### Windows (PowerShell)
 
-- **Windows 10/11:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) with the WSL2 backend (default), running.
+Install these first, then **open a new PowerShell window** so the new commands are found:
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with the WSL2 backend (the default), and start it.
+- [Go 1.24+](https://go.dev/dl/)
+- [Node.js 22 LTS](https://nodejs.org/)
+- [Git](https://git-scm.com/download/win)
+
+`make` is **not** needed on Windows. Use `build.ps1` instead:
+
+```bash
+git clone https://github.com/abrardw/lps.git
+```
+
+```bash
+cd lps
+```
+
+```bash
+.\build.ps1
+```
+
+```bash
+.\bin\lpsd.exe serve
+```
+
+If PowerShell says **"running scripts is disabled on this system"**, run the build this way instead:
+
+```bash
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+Or allow local scripts for your user once (it only affects scripts on your PC, not downloaded ones):
+
+```bash
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Other tasks: `.\build.ps1 run` (build and start), `.\build.ps1 test`, `.\build.ps1 build-all` (release binaries for every OS), `.\build.ps1 clean`.
+
+### Linux / macOS
+
 - **Linux:** Docker Engine; your user must be able to use `/var/run/docker.sock`.
-- **macOS:** Docker Desktop, OrbStack or Colima. (Linux and macOS hosts are not the main target yet, but they work.)
-- To build: Go 1.24+ and Node.js 22+.
+- **macOS:** Docker Desktop, OrbStack or Colima.
+- Go 1.24+ and Node.js 22+.
 
 ```bash
 git clone https://github.com/abrardw/lps.git
@@ -136,24 +176,12 @@ make all
 ./bin/lpsd serve
 ```
 
-On Windows without `make`, run the steps directly (PowerShell):
-
-```bash
-cd web; npm ci; npm run build; cd ..
-```
-
-```bash
-go build -o bin/lpsd.exe ./cmd/lpsd
-```
-
-```bash
-.\bin\lpsd.exe serve
-```
+### First steps
 
 Open <http://127.0.0.1:7070>, create the admin account, then:
 
 1. **New VPS** → choose a name and paste your SSH public key (`ssh-keygen -t ed25519` creates one, including in PowerShell). The first VPS builds the Ubuntu image, which takes a few minutes. After that you get a command like `ssh dev@localhost -p 2201`.
-2. **New app** → enter the absolute path to a project folder with a `Dockerfile` and the port the app listens on. Try `examples/static-site` (port 80). The app is served at `http://localhost:81xx`.
+2. **New app** → enter the absolute path to a project folder with a `Dockerfile` and the port the app listens on. Try `examples\static-site` (port 80). The app is served at `http://localhost:81xx`.
 
 ### `lpsd serve` flags
 
@@ -173,6 +201,8 @@ Open <http://127.0.0.1:7070>, create the admin account, then:
 | `8100–8199` | Each app's HTTP port | `127.0.0.1` (`-bind-ip`) |
 
 ## Development
+
+Run the checks with `.\build.ps1 test` on Windows, or:
 
 ```bash
 make test
