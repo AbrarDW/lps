@@ -37,21 +37,22 @@ export function SetupWizard() {
     <div className="min-h-screen px-4 py-8">
       <div className="mx-auto max-w-2xl space-y-6">
         <div className="text-center">
-          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-xl bg-indigo-600 font-bold text-white">LPS</div>
-          <h1 className="text-2xl font-semibold">Set up LPS</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Turn this PC into your own server in a few steps.</p>
+          <div className="mx-auto mb-3 grid size-13 place-items-center rounded-bp border-2 border-cyan font-mono text-[15px] font-medium text-cyan">LPS</div>
+          <span className="label-mono text-cyan">First-run setup</span>
+          <h1 className="m-0 text-[30px] font-semibold">Set up LPS</h1>
+          <p className="text-[13px] text-ink-muted">Turn this PC into your own server in a few steps.</p>
         </div>
         <ol className="grid grid-cols-4 gap-2 text-xs sm:text-sm">
           {STEPS.map((label, i) => (
             <li key={label} className="flex flex-col items-center gap-1 text-center">
               <span
-                className={`grid h-8 w-8 place-items-center rounded-full font-semibold ${
-                  i < step ? "bg-emerald-600 text-white" : i === step ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-500 dark:bg-slate-800"
+                className={`grid size-[34px] place-items-center rounded-[2px] font-mono font-medium ${
+                  i < step ? "border border-success/50 bg-success/25 text-success-ink" : i === step ? "border border-cyan bg-primary text-white" : "border border-line-strong bg-panel text-ink-muted"
                 }`}
               >
-                {i < step ? "✓" : i + 1}
+                {i < step ? "✓" : String(i + 1).padStart(2, "0")}
               </span>
-              <span className={i === step ? "font-medium" : "text-slate-500 dark:text-slate-400"}>{label}</span>
+              <span className={i === step ? "font-semibold" : "text-ink-muted"}>{label}</span>
             </li>
           ))}
         </ol>
@@ -79,7 +80,28 @@ function safeSet(k: string, v: string) {
   }
 }
 
-const icon = { ok: "✅", warn: "⚠️", fail: "❌" } as const;
+function StatusIcon({ status }: { status: SetupCheck["status"] }) {
+  if (status === "ok")
+    return (
+      <svg role="img" aria-label="OK" width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <rect x="1" y="1" width="18" height="18" rx="2" stroke="#72CA9B" />
+        <path d="M5.5 10.5l3 3 6-7" stroke="#72CA9B" strokeWidth="1.8" />
+      </svg>
+    );
+  if (status === "warn")
+    return (
+      <svg role="img" aria-label="Warning" width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M10 2l8.5 15h-17z" stroke="#FBB360" />
+        <path d="M10 8v4M10 14.5v.5" stroke="#FBB360" strokeWidth="1.8" />
+      </svg>
+    );
+  return (
+    <svg role="img" aria-label="Failed" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <rect x="1" y="1" width="18" height="18" rx="2" stroke="#FA999C" />
+      <path d="M6.5 6.5l7 7M13.5 6.5l-7 7" stroke="#FA999C" strokeWidth="1.8" />
+    </svg>
+  );
+}
 
 function CheckRow({ c }: { c: SetupCheck }) {
   const qc = useQueryClient();
@@ -90,15 +112,15 @@ function CheckRow({ c }: { c: SetupCheck }) {
   return (
     <li className="space-y-2 py-3">
       <div className="flex items-start gap-3">
-        <span aria-label={c.status} className="text-lg leading-6">
-          {icon[c.status]}
+        <span className="mt-0.5 shrink-0">
+          <StatusIcon status={c.status} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="font-medium">
             {c.label}
-            {!c.required && <span className="ml-2 text-xs font-normal text-slate-500">optional</span>}
+            {!c.required && <span className="label-mono ml-2 text-[10px] font-normal text-ink-faint">optional</span>}
           </div>
-          {c.detail && <div className="text-sm text-slate-600 dark:text-slate-300">{c.detail}</div>}
+          {c.detail && <div className="text-[13px] text-ink-2">{c.detail}</div>}
         </div>
       </div>
       {c.status !== "ok" && c.fixes && c.fixes.length > 0 && (
@@ -112,7 +134,7 @@ function CheckRow({ c }: { c: SetupCheck }) {
                 href={f.value}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-block rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="inline-flex h-[30px] items-center rounded-bp border border-line-strong px-2.5 text-[13px] text-ink no-underline hover:bg-white/5 hover:text-white"
               >
                 {f.label} ↗
               </a>
@@ -134,15 +156,15 @@ function ChecksStep({ onNext }: { onNext: () => void }) {
   const d = checks.data;
   return (
     <Card title="1. Check this PC">
-      <p className="mb-2 text-sm text-slate-500 dark:text-slate-400">
+      <p className="mb-2 text-[13px] text-ink-muted">
         LPS runs your VPSes and apps in Linux containers using Docker. This list updates by itself while you fix things.
       </p>
       <ErrorBox error={checks.error} />
       {!d ? (
-        <p className="py-6 text-center text-slate-500">Checking…</p>
+        <p className="label-mono py-6 text-center text-ink-faint">Checking…</p>
       ) : (
         <>
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+          <ul className="divide-y divide-line-soft">
             {d.checks.map((c) => (
               <CheckRow key={c.id} c={c} />
             ))}
@@ -152,7 +174,7 @@ function ChecksStep({ onNext }: { onNext: () => void }) {
               Continue
             </Button>
             {!d.ready && (
-              <button className="text-sm text-slate-500 underline" onClick={onNext}>
+              <button className="text-[13px] text-ink-muted underline" onClick={onNext}>
                 Continue anyway (fix it later)
               </button>
             )}
@@ -177,7 +199,7 @@ function AdminStep({ onNext }: { onNext: () => void }) {
   }
   return (
     <Card title="2. Admin account">
-      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+      <p className="mb-4 text-[13px] text-ink-muted">
         You'll use this to sign in to LPS, also from your phone later. Use a strong password.
       </p>
       <CredentialsForm
@@ -200,7 +222,7 @@ function RemoteStep({ onNext }: { onNext: () => void }) {
           Want to open LPS, SSH into your VPSes and test your apps when you're away from home? LPS can use{" "}
           <b>Tailscale</b> (free) to make them reachable from your own phone and laptop, without opening your router.
         </p>
-        <p className="text-slate-500 dark:text-slate-400">You can do this any time from the "Remote access" page.</p>
+        <p className="text-ink-muted">You can do this any time from the "Remote access" page.</p>
         <div className="flex flex-wrap gap-3 pt-1">
           <Button
             onClick={() => {
@@ -237,16 +259,16 @@ function FinishStep() {
       <div className="space-y-4 text-sm">
         <p>LPS is ready. Next, create your first Linux VPS or deploy an app from a project folder.</p>
         {auto.data?.supported && (
-          <div className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+          <div className="flex items-center gap-3 rounded-[2px] border border-line-soft p-3">
             <Switch label="Start with Windows" checked={auto.data.enabled} disabled={set.isPending} onChange={(v) => set.mutate(v)} />
             <div>
               <div className="font-medium">Start LPS when I sign in to Windows</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Recommended, so your VPSes and apps are reachable after a restart.</div>
+              <div className="text-xs text-ink-muted">Recommended, so your VPSes and apps are reachable after a restart.</div>
             </div>
           </div>
         )}
         <ErrorBox error={set.error} />
-        <p className="text-slate-500 dark:text-slate-400">
+        <p className="text-ink-muted">
           LPS keeps running in the background{auto.data?.supported ? " (look for the LPS icon in the system tray)" : ""}. Bookmark{" "}
           <code>{window.location.origin}</code>.
         </p>

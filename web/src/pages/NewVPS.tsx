@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { Button, Card, ErrorBox, Field, Input, TextArea } from "../components/ui";
+import { Button, Card, ErrorBox, Field, Input, PageHeader, TextArea } from "../components/ui";
 
 export function NewVPS() {
   const nav = useNavigate();
@@ -27,7 +27,9 @@ export function NewVPS() {
   });
 
   return (
-    <Card title="New Linux VPS">
+    <>
+      <PageHeader sheet="Sheet 02 — New VPS" title="Create a Linux VPS" />
+      <Card title="VPS details" marks>
       <form
         className="space-y-4"
         onSubmit={(e) => {
@@ -35,7 +37,7 @@ export function NewVPS() {
           m.mutate();
         }}
       >
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-[13px] text-ink-muted">
           Creates an Ubuntu 24.04 machine with SSH. On Windows it runs as a Linux container inside Docker Desktop's WSL2
           VM. Files under <code>/home</code> are kept on a persistent volume.
         </p>
@@ -74,11 +76,12 @@ export function NewVPS() {
           <Button type="submit" disabled={m.isPending}>
             {m.isPending ? "Creating…" : "Create VPS"}
           </Button>
-          <Link to="/" className="rounded-lg px-3.5 py-2 text-sm text-slate-600 hover:underline dark:text-slate-300">
+          <Link to="/" className="inline-flex h-9 items-center px-3 text-ink-muted no-underline hover:text-ink">
             Cancel
           </Link>
         </div>
       </form>
     </Card>
+    </>
   );
 }

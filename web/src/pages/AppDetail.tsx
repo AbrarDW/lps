@@ -3,12 +3,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, displayHost } from "../api";
 import { DockerfileCard } from "../components/DockerfileCard";
-import { ActionBox, Button, Card, ErrorBox, LogView, StateBadge, Switch, formatLimits } from "../components/ui";
+import { ActionBox, Button, Callout, Card, CornerMarks, ErrorBox, Icon, LogView, StateBadge, Switch, Tabs, Tag, formatLimits } from "../components/ui";
+
+type AppTab = "deployments" | "dockerfile" | "logs";
 
 export function AppDetail() {
   const id = Number(useParams().id);
   const nav = useNavigate();
   const qc = useQueryClient();
+  const [tab, setTab] = useState<AppTab>("deployments");
   const [selected, setSelected] = useState<number | null>(null);
   const system = useQuery({ queryKey: ["system"], queryFn: api.system });
   const app = useQuery({
@@ -22,7 +25,7 @@ export function AppDetail() {
     queryFn: () => api.deployments(id),
     refetchInterval: deploying ? 1500 : 5000,
   });
-  const logs = useQuery({ queryKey: ["apps", id, "logs"], queryFn: () => api.appLogs(id), enabled: !!app.data?.containerId });
+  const logs = useQuery({ queryKey: ["apps", id, "logs"], queryFn: () => api.appLogs(id), enabled: !!app.data?.containerId && tab === "logs" });
 
   const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote });
   const refresh = () => qc.invalidateQueries({ queryKey: ["apps"] });
@@ -33,168 +36,234 @@ export function AppDetail() {
       qc.invalidateQueries({ queryKey: ["remote"] });
     },
   });
-  const deploy = useMutation({ mutationFn: () => api.deployApp(id), onSuccess: () => { setSelected(null); refresh(); } });
+  const deploy = useMutation({
+    mutationFn: () => api.deployApp(id),
+    onSuccess: () => {
+      setSelected(null);
+      setTab("deployments");
+      refresh();
+    },
+  });
   const action = useMutation({ mutationFn: (a: "start" | "stop") => api.appAction(id, a), onSuccess: refresh });
   const del = useMutation({
     mutationFn: () => api.deleteApp(id),
     onSuccess: () => {
       qc.removeQueries({ queryKey: ["apps", id] });
       refresh();
-      nav("/");
+      nav("/apps");
     },
   });
 
-  if (app.isLoading) return <p className="text-slate-500">Loading…</p>;
+  if (app.isLoading) return <p className="label-mono text-ink-faint">Loading…</p>;
   if (app.error || !app.data) return <ErrorBox error={app.error ?? "not found"} />;
   const a = app.data;
   const url = `http://${displayHost(system.data?.bindIp)}:${a.hostPort}`;
   const shown = deployments.data?.find((d) => d.id === selected) ?? deployments.data?.[0];
+  const running = a.state === "running";
 
   return (
     <>
-      <Card
-        title={
-          <span className="flex items-center gap-3">
-            {a.name} <StateBadge state={deploying ? "building" : a.state} />
-          </span>
-        }
-        actions={
-          <>
-            <Button disabled={deploying || deploy.isPending} onClick={() => deploy.mutate()}>
-              {deploying ? "Deploying…" : "Redeploy"}
-            </Button>
-            {a.state === "running" ? (
-              <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate("stop")}>
-                Stop
-              </Button>
-            ) : (
-              <Button variant="secondary" disabled={action.isPending || !a.containerId} onClick={() => action.mutate("start")}>
-                Start
-              </Button>
-            )}
-          </>
-        }
-      >
-        <div className="space-y-3 text-sm">
-          <ErrorBox error={deploy.error ?? action.error ?? a.error} />
-          <div>
-            <span className="text-slate-500 dark:text-slate-400">URL: </span>
-            {a.state === "running" ? (
-              <a className="text-indigo-600 hover:underline dark:text-indigo-400" href={url} target="_blank" rel="noreferrer">
-                {url}
-              </a>
-            ) : (
-              <span>{url}</span>
-            )}
+      <nav aria-label="Breadcrumb" className="flex gap-2 font-mono text-xs text-ink-faint uppercase">
+        <Link to="/apps" className="no-underline">
+          Apps
+        </Link>
+        <span aria-hidden="true">/</span>
+        <span className="text-ink">{a.name}</span>
+      </nav>
+
+      <section className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="m-0 text-[28px] font-semibold">{a.name}</h1>
+            <StateBadge state={deploying ? "building" : a.state} />
+            {a.publicUrl && <Tag intent="warning">Public</Tag>}
           </div>
-          {a.remoteUrl && (
-            <div>
-              <span className="text-slate-500 dark:text-slate-400">From anywhere (Tailscale): </span>
-              <a className="text-indigo-600 hover:underline dark:text-indigo-400" href={a.remoteUrl} target="_blank" rel="noreferrer">
-                {a.remoteUrl}
-              </a>
-              <span className="block text-xs text-slate-500 dark:text-slate-400">
-                Tailscale devices only. Use the public link below to share with anyone.
-              </span>
+          <span className="font-mono text-xs break-all text-ink-faint">
+            {a.sourcePath} · container port {a.containerPort} · {formatLimits(a.cpus, a.memoryMb)} · {a.dockerfileSource === "lps" ? "Dockerfile stored in LPS" : "project Dockerfile"}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {running ? (
+            <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate("stop")}>
+              <Icon name="stop" />
+              Stop
+            </Button>
+          ) : (
+            <Button variant="secondary" disabled={action.isPending || !a.containerId} onClick={() => action.mutate("start")}>
+              <Icon name="play" />
+              Start
+            </Button>
+          )}
+          <Button disabled={deploying || deploy.isPending} onClick={() => deploy.mutate()}>
+            <Icon name="deploy" />
+            {deploying ? "Deploying…" : "Redeploy"}
+          </Button>
+        </div>
+      </section>
+
+      <ErrorBox error={deploy.error ?? action.error ?? a.error} />
+
+      {/* Where the app can be reached */}
+      <section aria-label="Addresses" className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] overflow-hidden rounded-bp border border-line bg-panel">
+        <Endpoint label="On this PC" href={running ? url : undefined} text={url} />
+        {a.remoteUrl ? (
+          <Endpoint label="Your devices · tailnet" href={a.remoteUrl} text={a.remoteUrl} note="Tailscale devices only" />
+        ) : (
+          <div className="flex flex-col gap-1 border-line px-4 py-3">
+            <span className="label-mono text-[10px] text-ink-faint">Your devices · tailnet</span>
+            <span className="text-[13px] text-ink-muted">
+              Turn on <Link to="/remote">remote access</Link>
+            </span>
+          </div>
+        )}
+        {a.publicUrl ? (
+          <Endpoint label="Anyone · public link" href={a.publicUrl} text={a.publicUrl} warn />
+        ) : (
+          <div className="flex flex-col gap-1 px-4 py-3">
+            <span className="label-mono text-[10px] text-ink-faint">Anyone · public link</span>
+            <span className="text-[13px] text-ink-muted">Off</span>
+          </div>
+        )}
+      </section>
+
+      {/* Deployments / Dockerfile / Logs */}
+      <section className="relative rounded-bp border border-line bg-panel">
+        <CornerMarks />
+        <Tabs
+          label="App views"
+          tabs={[
+            { id: "deployments", label: "Deployments" },
+            { id: "dockerfile", label: "Dockerfile" },
+            { id: "logs", label: "Container logs" },
+          ]}
+          value={tab}
+          onChange={setTab}
+          right={
+            tab === "logs" ? (
+              <Button variant="secondary" size="sm" onClick={() => logs.refetch()}>
+                Refresh
+              </Button>
+            ) : undefined
+          }
+        />
+        {tab === "deployments" && (
+          <div className="flex flex-wrap">
+            <ol aria-label="Deployments" className="m-0 max-h-[26rem] min-w-0 flex-[1_1_240px] list-none overflow-y-auto border-r border-line p-0">
+              {deployments.data?.length === 0 && <li className="p-4 text-ink-muted">No deployments yet.</li>}
+              {deployments.data?.map((d) => {
+                const on = shown?.id === d.id;
+                return (
+                  <li key={d.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(d.id)}
+                      aria-current={on}
+                      className={`flex w-full cursor-pointer flex-col gap-0.5 border-0 border-b border-l-[3px] border-b-line-soft px-4 py-3 text-left text-ink ${
+                        on ? "border-l-cyan bg-cyan/10" : "border-l-transparent bg-transparent hover:bg-white/5"
+                      }`}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <b>#{d.id}</b>
+                        <StateBadge state={d.status} />
+                      </span>
+                      <span className="text-xs text-ink-muted">{new Date(d.startedAt).toLocaleString()}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+            <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-2 p-3">
+              {shown && (
+                <div className="flex flex-wrap justify-between gap-2 font-mono text-[11px] text-ink-faint uppercase">
+                  <span>
+                    Build log · #{shown.id}
+                    {shown.image && <> · {shown.image}</>}
+                  </span>
+                  <span>{shown.status}</span>
+                </div>
+              )}
+              <LogView text={shown?.log} empty="No deployments yet." className="!max-h-[24rem] min-h-[24rem]" />
+            </div>
+          </div>
+        )}
+        {tab === "dockerfile" && (
+          <div className="p-4">
+            <DockerfileCard appId={a.id} deploying={deploying} bare />
+          </div>
+        )}
+        {tab === "logs" && (
+          <div className="p-3">
+            <ErrorBox error={logs.error} />
+            <LogView text={logs.data?.logs} className="!max-h-[26rem] min-h-[26rem]" />
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-wrap items-start gap-5">
+        <Card title="Public link" className="flex-[1_1_380px]">
+          {!remote.data?.enabled ? (
+            <p className="m-0 text-ink-muted">
+              Turn on <Link to="/remote">remote access</Link> to reach this app from your devices, or to share it with a public link.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3 text-[13px]">
+              <div className="flex items-center gap-3">
+                <Switch
+                  label="Public link"
+                  checked={a.publicPort > 0}
+                  disabled={setPublic.isPending}
+                  onChange={(v) => {
+                    if (!v || confirm("Anyone on the internet who has the link will be able to open this app. Continue?")) {
+                      setPublic.mutate(v);
+                    }
+                  }}
+                />
+                <span>{a.publicPort > 0 ? "Anyone with the link can open this app" : "Only your Tailscale devices can open this app"}</span>
+              </div>
+              {a.publicPort > 0 && !a.publicUrl && <p className="m-0 text-ink-muted">Setting up the public link…</p>}
+              {setPublic.error instanceof ApiError && setPublic.error.needsAction ? (
+                <ActionBox message={setPublic.error.needsAction.message} url={setPublic.error.needsAction.url} linkText="How to enable" />
+              ) : (
+                <ErrorBox error={setPublic.error} />
+              )}
+              <Callout intent="warning">Uses Tailscale Funnel. A PC can have at most 2 public apps at a time.</Callout>
             </div>
           )}
-          <div className="break-all">
-            <span className="text-slate-500 dark:text-slate-400">Source: </span>
-            <code>{a.sourcePath}</code>
-          </div>
-          <div>
-            <span className="text-slate-500 dark:text-slate-400">Container port {a.containerPort} · </span>
-            {formatLimits(a.cpus, a.memoryMb)}
-          </div>
-        </div>
-      </Card>
+        </Card>
 
-      <Card title="Public link">
-        {!remote.data?.enabled ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Turn on{" "}
-            <Link to="/remote" className="text-indigo-600 underline dark:text-indigo-400">
-              remote access
-            </Link>{" "}
-            to reach this app from your devices, or to share it with a public link.
-          </p>
-        ) : (
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center gap-3">
-              <Switch
-                label="Public link"
-                checked={a.publicPort > 0}
-                disabled={setPublic.isPending}
-                onChange={(v) => {
-                  if (!v || confirm("Anyone on the internet who has the link will be able to open this app. Continue?")) {
-                    setPublic.mutate(v);
-                  }
-                }}
-              />
-              <span>{a.publicPort > 0 ? "Anyone with the link can open this app" : "Only your Tailscale devices can open this app"}</span>
-            </div>
-            {a.publicUrl && (
-              <a className="block break-all text-indigo-600 hover:underline dark:text-indigo-400" href={a.publicUrl} target="_blank" rel="noreferrer">
-                {a.publicUrl}
-              </a>
-            )}
-            {a.publicPort > 0 && !a.publicUrl && <p className="text-slate-500">Setting up the public link…</p>}
-            {setPublic.error instanceof ApiError && setPublic.error.needsAction ? (
-              <ActionBox message={setPublic.error.needsAction.message} url={setPublic.error.needsAction.url} linkText="How to enable" />
-            ) : (
-              <ErrorBox error={setPublic.error} />
-            )}
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Uses Tailscale Funnel. A PC can have at most 2 public apps at a time.
-            </p>
-          </div>
-        )}
-      </Card>
-
-      <DockerfileCard appId={a.id} deploying={deploying} />
-
-      <Card title="Deployments">
-        <div className="mb-3 flex flex-wrap gap-2">
-          {deployments.data?.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setSelected(d.id)}
-              className={`flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs ${
-                shown?.id === d.id ? "border-indigo-500" : "border-slate-200 dark:border-slate-700"
-              }`}
+        <Card title="Danger zone" tone="danger" className="flex-[1_1_300px]">
+          <div className="flex flex-col gap-3 text-[13px]">
+            <p className="m-0 text-ink-2">The container is removed. Your project folder is not touched.</p>
+            <Button
+              variant="danger"
+              className="self-start"
+              disabled={del.isPending || deploying}
+              onClick={() => {
+                if (confirm(`Delete app "${a.name}"? The container is removed; your project folder is not touched.`)) del.mutate();
+              }}
             >
-              #{d.id} <StateBadge state={d.status} />
-            </button>
-          ))}
-        </div>
-        {shown && (
-          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-            Started {new Date(shown.startedAt).toLocaleString()}
-            {shown.image && <> · image {shown.image}</>}
-          </p>
-        )}
-        <LogView text={shown?.log} empty="No deployments yet." />
-      </Card>
-
-      <Card title="Container logs" actions={<Button variant="secondary" onClick={() => logs.refetch()}>Refresh</Button>}>
-        <ErrorBox error={logs.error} />
-        <LogView text={logs.data?.logs} />
-      </Card>
-
-      <Card title="Danger zone">
-        <Button
-          variant="danger"
-          disabled={del.isPending || deploying}
-          onClick={() => {
-            if (confirm(`Delete app "${a.name}"? The container is removed; your project folder is not touched.`)) del.mutate();
-          }}
-        >
-          Delete app
-        </Button>
-        <div className="mt-3">
-          <ErrorBox error={del.error} />
-        </div>
-      </Card>
+              Delete app
+            </Button>
+            <ErrorBox error={del.error} />
+          </div>
+        </Card>
+      </section>
     </>
+  );
+}
+
+function Endpoint({ label, href, text, note, warn }: { label: string; href?: string; text: string; note?: string; warn?: boolean }) {
+  return (
+    <div className={`flex min-w-0 flex-col gap-1 border-r border-line px-4 py-3 last:border-r-0 ${warn ? "bg-warning/6" : ""}`}>
+      <span className={`label-mono text-[10px] ${warn ? "text-warning-ink" : "text-ink-faint"}`}>{label}</span>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className={`font-mono text-[13px] break-all ${warn ? "text-warning-ink hover:text-white" : ""}`}>
+          {text}
+        </a>
+      ) : (
+        <span className="font-mono text-[13px] break-all text-ink-muted">{text}</span>
+      )}
+      {note && <span className="text-[11px] text-ink-faint">{note}</span>}
+    </div>
   );
 }

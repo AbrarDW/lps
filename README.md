@@ -2,7 +2,9 @@
 
 Turn your home PC into your own VPS host. LPS runs **Linux VPSes** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
 
-> Status: **early development**. Linux VPSes, Dockerfile app deploys and [remote access with Tailscale](#remote-access-with-tailscale) work. A reverse proxy with hostnames and the one-click installer are next. See the [roadmap](#roadmap).
+> Status: **early development**. Linux VPSes with a [browser terminal](#terminal-in-the-browser), app deploys (with generated Dockerfiles), [remote access with Tailscale](#remote-access-with-tailscale) and the [Windows installer](#install-on-windows) work. A reverse proxy with hostnames is next. See the [roadmap](#roadmap).
+
+The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy grid paper, built with Tailwind 4 (tokens in `web/src/index.css`) and IBM Plex fonts bundled with the app, so it works offline.
 
 ![LPS dashboard](docs/images/dashboard.png)
 

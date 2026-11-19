@@ -30,10 +30,22 @@ export default function VPSTerminal({
     if (!el) return;
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+      fontFamily: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       fontSize: 14,
       scrollback: 5000,
-      theme: { background: "#020617", foreground: "#e2e8f0", cursor: "#a5b4fc", selectionBackground: "#334155" },
+      theme: {
+        background: "#020b16",
+        foreground: "#d7e3ef",
+        cursor: "#5cc8ff",
+        selectionBackground: "#24507f",
+        green: "#72ca9b",
+        brightGreen: "#8ed9b0",
+        blue: "#5cc8ff",
+        brightBlue: "#9adcff",
+        cyan: "#5cc8ff",
+        red: "#fa999c",
+        yellow: "#fbc27e",
+      },
     });
     termRef.current = term;
     const fit = new FitAddon();
@@ -109,9 +121,9 @@ export default function VPSTerminal({
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={host} className="min-h-0 flex-1 overflow-hidden rounded-lg bg-slate-950 p-2" data-testid="terminal" />
-      {status === "connecting" && <p className="mt-2 text-xs text-slate-500">Connecting…</p>}
-      {status === "closed" && reason && <p className="mt-2 text-xs text-slate-500">Session ended: {reason}</p>}
+      <div ref={host} className="min-h-0 flex-1 overflow-hidden rounded-[2px] border border-line-soft bg-term p-2" data-testid="terminal" />
+      {status === "connecting" && <p className="mt-2 label-mono text-[10px] text-ink-faint">Connecting…</p>}
+      {status === "closed" && reason && <p className="mt-2 label-mono text-[10px] text-ink-faint">Session ended: {reason}</p>}
     </div>
   );
 }

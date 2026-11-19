@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type Detection } from "../api";
-import { Button, Card, ErrorBox, Field, Input, TextArea } from "../components/ui";
+import { Button, Card, ErrorBox, Field, Input, PageHeader, TextArea } from "../components/ui";
 
 const absPath = (p: string) => /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(p.trim());
 
@@ -67,7 +67,9 @@ export function NewApp() {
   });
 
   return (
-    <Card title="New app">
+    <>
+      <PageHeader sheet="Sheet 03 — New app" title="Deploy an app" />
+      <Card title="App details" marks>
       <form
         className="space-y-4"
         onSubmit={(e) => {
@@ -75,7 +77,7 @@ export function NewApp() {
           m.mutate();
         }}
       >
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-[13px] text-ink-muted">
           LPS builds your project folder and runs it as a Linux container. If the folder has no <code>Dockerfile</code>,
           LPS detects the project type and writes one for you to review.
         </p>
@@ -86,25 +88,25 @@ export function NewApp() {
           <Input value={form.sourcePath} onChange={set("sourcePath")} required />
         </Field>
 
-        {detect.isFetching && <p className="text-sm text-slate-500">Looking at the folder…</p>}
+        {detect.isFetching && <p className="text-[13px] text-ink-muted">Looking at the folder…</p>}
         {detect.error && <ErrorBox error={detect.error} />}
         {detect.data?.hasDockerfile && (
-          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <p className="rounded-[2px] border border-success/45 bg-success/12 px-3 py-2 text-[13px] text-success-ink">
             ✓ Found a Dockerfile in this folder. LPS will use it.
           </p>
         )}
         {needsDockerfile && template && (
-          <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-900 dark:bg-indigo-950/30">
+          <div className="relative space-y-3 rounded-bp border border-cyan/45 bg-primary/8 p-4">
             <div>
               <div className="font-medium">No Dockerfile found: LPS made one for you</div>
-              <div className="text-sm text-slate-600 dark:text-slate-300">
+              <div className="text-[13px] text-ink-2">
                 Detected: <b>{detect.data!.detection.label}</b>. Review it, change the template, or edit it below.
               </div>
             </div>
             <Field label="Template">
               <select
                 aria-label="Template"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                className="h-[34px] w-full rounded-bp border border-[#2f5f92] bg-ground-deep px-2 text-ink"
                 value={template.type}
                 onChange={(e) => {
                   const t = detect.data!.templates.find((x) => x.type === e.target.value);
@@ -123,7 +125,7 @@ export function NewApp() {
               <TextArea aria-label="Dockerfile" rows={Math.min(22, dockerfile.split("\n").length + 1)} value={dockerfile} onChange={(e) => setDockerfile(e.target.value)} spellCheck={false} />
             </Field>
             {template.notes && template.notes.length > 0 && (
-              <ul className="list-disc space-y-1 pl-5 text-xs text-slate-600 dark:text-slate-300">
+              <ul className="list-disc space-y-1 pl-5 text-xs text-ink-2">
                 {template.notes.map((n) => (
                   <li key={n}>{n}</li>
                 ))}
@@ -133,7 +135,7 @@ export function NewApp() {
               <input type="checkbox" className="mt-1" checked={saveToProject} onChange={(e) => setSaveToProject(e.target.checked)} />
               <span>
                 Also save this Dockerfile into the project folder
-                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                <span className="block text-xs text-ink-muted">
                   Creates <code>Dockerfile</code> (and <code>.dockerignore</code> if missing) so you can edit it in your editor
                   and commit it. Off: LPS keeps it and your folder is not changed.
                 </span>
@@ -168,11 +170,12 @@ export function NewApp() {
           <Button type="submit" disabled={m.isPending || detect.isFetching}>
             {m.isPending ? "Creating…" : "Create and deploy"}
           </Button>
-          <Link to="/" className="rounded-lg px-3.5 py-2 text-sm text-slate-600 hover:underline dark:text-slate-300">
+          <Link to="/" className="inline-flex h-9 items-center px-3 text-ink-muted no-underline hover:text-ink">
             Cancel
           </Link>
         </div>
       </form>
     </Card>
+    </>
   );
 }

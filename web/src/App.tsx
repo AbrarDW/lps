@@ -1,24 +1,25 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, ApiError } from "./api";
 import { AuthPage } from "./pages/Auth";
-import { Dashboard } from "./pages/Dashboard";
+import { AppListPage, Dashboard, VPSListPage } from "./pages/Dashboard";
 import { NewVPS } from "./pages/NewVPS";
 import { VPSDetail } from "./pages/VPSDetail";
 import { NewApp } from "./pages/NewApp";
 import { AppDetail } from "./pages/AppDetail";
 import { Remote } from "./pages/Remote";
 import { SetupWizard, wizardActive } from "./pages/SetupWizard";
+import { Tag } from "./components/ui";
 
 export default function App() {
   const setup = useQuery({ queryKey: ["setup"], queryFn: api.setupStatus });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, enabled: setup.data?.needsSetup === false });
 
   if (setup.isLoading || (setup.data?.needsSetup === false && me.isLoading)) {
-    return <div className="p-10 text-center text-slate-500">Loading…</div>;
+    return <div className="label-mono p-10 text-center text-ink-faint">Loading…</div>;
   }
   if (setup.error) {
-    return <div className="p-10 text-center text-rose-600">Cannot reach lpsd: {String(setup.error)}</div>;
+    return <div className="p-10 text-center text-danger-ink">Cannot reach lpsd: {String(setup.error)}</div>;
   }
   if (setup.data?.needsSetup || wizardActive()) return <SetupWizard />;
   if (me.error instanceof ApiError && me.error.status === 401) return <AuthPage mode="login" />;
@@ -26,11 +27,13 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <Header username={me.data?.username} />
-      <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pt-6 pb-12 sm:px-6">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/vps" element={<VPSListPage />} />
           <Route path="/vps/new" element={<NewVPS />} />
           <Route path="/vps/:id" element={<VPSDetail />} />
+          <Route path="/apps" element={<AppListPage />} />
           <Route path="/apps/new" element={<NewApp />} />
           <Route path="/apps/:id" element={<AppDetail />} />
           <Route path="/remote" element={<Remote />} />
@@ -41,23 +44,70 @@ export default function App() {
   );
 }
 
+const navItems = [
+  { to: "/", label: "Dashboard", end: true },
+  { to: "/vps", label: "VPSes", end: false },
+  { to: "/apps", label: "Apps", end: false },
+  { to: "/remote", label: "Remote access", end: false },
+];
+
 function Header({ username }: { username?: string }) {
   const qc = useQueryClient();
   const nav = useNavigate();
+  const system = useQuery({ queryKey: ["system"], queryFn: api.system, refetchInterval: 15000 });
+  const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote, refetchInterval: 15000 });
+  const docker = system.data?.docker;
+
   return (
-    <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link to="/" className="flex items-center gap-2 font-semibold">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-indigo-600 text-xs font-bold text-white">LPS</span>
-          <span className="hidden sm:inline">Local Personal Server</span>
+    <header className="border-b border-line bg-ground-deep">
+      <div className="mx-auto flex min-h-13 max-w-7xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2 sm:px-6">
+        <Link to="/" className="flex items-center gap-2.5 text-ink no-underline hover:text-ink">
+          <span className="grid size-7 place-items-center rounded-[2px] border-[1.5px] border-cyan font-mono text-[10px] font-medium text-cyan">
+            LPS
+          </span>
+          <span className="flex flex-col leading-tight">
+            <span className="text-[15px] font-semibold">LPS</span>
+            <span className="hidden font-mono text-[10px] tracking-[0.12em] text-ink-faint sm:inline">LOCAL PERSONAL SERVER</span>
+          </span>
         </Link>
-        <div className="flex items-center gap-4 text-sm">
-          <Link to="/remote" className="text-indigo-600 hover:underline dark:text-indigo-400">
-            Remote access
-          </Link>
-          <span className="hidden text-slate-500 sm:inline dark:text-slate-400">{username}</span>
+
+        <nav aria-label="Main" className="flex flex-auto flex-wrap gap-0.5">
+          {navItems.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.end}
+              className={({ isActive }) =>
+                `flex h-8 items-center rounded-bp px-3 no-underline ${
+                  isActive ? "bg-cyan/16 font-medium text-white hover:text-white" : "text-ink-2 hover:bg-white/5 hover:text-white"
+                }`
+              }
+            >
+              {n.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {docker && (
+            <Tag intent={docker.ok ? "success" : "danger"} dot>
+              {docker.ok ? `Docker ${docker.version ?? ""}` : "Docker offline"}
+            </Tag>
+          )}
+          {remote.data?.available && remote.data.enabled && (
+            <Link to="/remote" className="no-underline">
+              <Tag intent={remote.data.needsAction ? "warning" : "primary"} dot>
+                Tailnet {remote.data.needsAction ? "needs attention" : "on"}
+              </Tag>
+            </Link>
+          )}
+          <span className="hidden items-center gap-2 text-ink-2 sm:inline-flex">
+            <span className="grid size-5 place-items-center rounded-[2px] bg-[#1c4a7a] text-[11px] font-semibold uppercase">{username?.[0] ?? "?"}</span>
+            {username}
+          </span>
           <button
-            className="text-indigo-600 hover:underline dark:text-indigo-400"
+            type="button"
+            className="h-8 cursor-pointer rounded-bp border border-[#2f5f92] bg-transparent px-2.5 text-ink hover:bg-white/5"
             onClick={async () => {
               await api.logout();
               qc.clear();
