@@ -11,12 +11,13 @@
   .\build.ps1 run          # build, then start lpsd
   .\build.ps1 test         # vet + tests + frontend typecheck
   .\build.ps1 build-all    # release binaries for Windows, Linux and macOS
+  .\build.ps1 installer    # dist\LPS-Setup-<version>.exe (needs Inno Setup 6)
 
   If PowerShell says "running scripts is disabled on this system", run:
     powershell -ExecutionPolicy Bypass -File .\build.ps1
 #>
 param(
-    [ValidateSet('all', 'web', 'build', 'test', 'run', 'clean', 'build-all')]
+    [ValidateSet('all', 'web', 'build', 'test', 'run', 'clean', 'build-all', 'installer')]
     [string]$Task = 'all'
 )
 
@@ -85,6 +86,40 @@ function Build-Lpsd {
     Invoke-Native 'go build' { go build -ldflags $ldflags -o (Join-Path $PSScriptRoot 'bin\lpsd.exe') ./cmd/lpsd }
 }
 
+# Embed the icon and version info into lps.exe (optional: skipped if go-winres is missing).
+function Add-WinRes([string]$Version) {
+    $num = ($Version -replace '^v', '') -replace '[^0-9.].*$', ''
+    if (-not $num) { $num = '0.0.0' }
+    Push-Location (Join-Path $PSScriptRoot 'cmd\lps')
+    try {
+        & go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --icon lps.ico --manifest gui `
+            --product-name LPS --file-description "LPS - Local Personal Server" `
+            --product-version $num --file-version $num --copyright "LPS contributors (MIT)"
+        if ($LASTEXITCODE -ne 0) { Write-Host "    Warning: go-winres failed; lps.exe will have no icon." -ForegroundColor Yellow }
+    }
+    finally { Pop-Location }
+}
+
+function Build-Desktop {
+    Require-Go
+    $v = Get-Version
+    Add-WinRes $v
+    Step "Building bin\lps.exe (desktop app with tray icon)"
+    $ldflags = "-s -w -H windowsgui -X main.version=$v"
+    $old = $env:GOOS; $env:GOOS = 'windows'
+    try { Invoke-Native 'go build lps.exe' { go build -ldflags $ldflags -o (Join-Path $PSScriptRoot 'bin\lps.exe') ./cmd/lps } }
+    finally { $env:GOOS = $old }
+}
+
+function Find-Iscc {
+    $cmd = Get-Command iscc -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($p in @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) {
+        if ($p -and (Test-Path $p)) { return $p }
+    }
+    return $null
+}
+
 function Check-Docker {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         Write-Host "    Warning: Docker was not found. Install Docker Desktop (WSL2 backend) to create VPSes and apps: https://www.docker.com/products/docker-desktop/" -ForegroundColor Yellow
@@ -143,6 +178,18 @@ switch ($Task) {
             }
         }
         finally { $env:GOOS = $oldOs; $env:GOARCH = $oldArch }
+    }
+    'installer' {
+        $iscc = Find-Iscc
+        if (-not $iscc) { Fail "Inno Setup 6 was not found. Install it from https://jrsoftware.org/isdl.php (or: winget install JRSoftware.InnoSetup), then try again." }
+        Build-Web
+        Build-Lpsd
+        Build-Desktop
+        $v = (Get-Version) -replace '^v', ''
+        Step "Building the installer with Inno Setup"
+        Invoke-Native 'iscc' { & $iscc "/DAppVersion=$v" (Join-Path $PSScriptRoot 'installer\windows\lps.iss') }
+        Write-Host ""
+        Write-Host "Done: dist\LPS-Setup-$v.exe" -ForegroundColor Green
     }
     'clean' {
         $bin = Join-Path $PSScriptRoot 'bin'

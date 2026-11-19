@@ -6,6 +6,29 @@ Turn your home PC into your own VPS host. LPS runs **Linux VPSes** (Ubuntu machi
 
 ![LPS dashboard](docs/images/dashboard.png)
 
+## Install on Windows
+
+1. Download **`LPS-Setup-<version>.exe`** from the [Releases page](https://github.com/AbrarDW/lps/releases) (or, for a development build, from the latest successful **Windows installer** run under the repository's *Actions* tab → *Artifacts*).
+2. Run it. It installs for your user only (no administrator rights needed) into `%LOCALAPPDATA%\Programs\LPS`. Because the installer isn't code-signed yet, Windows SmartScreen may warn: choose **More info → Run anyway**.
+3. LPS starts with an icon in the system tray and opens the **setup wizard** in your browser.
+
+```mermaid
+flowchart LR
+    A["LPS-Setup.exe<br/>(no admin needed)"] --> B["LPS starts<br/>tray icon + browser"]
+    B --> C["1. Check this PC<br/>WSL2 · Docker · disk"]
+    C --> D["2. Create admin"]
+    D --> E["3. Remote access<br/>(optional, Tailscale)"]
+    E --> F["4. Start with Windows<br/>→ Dashboard"]
+```
+
+The wizard checks everything LPS needs and tells you how to fix what's missing: the exact command to install WSL2, a link to Docker Desktop, and a **Start Docker Desktop** button. The list refreshes by itself while you fix things.
+
+![Setup wizard: checking this PC](docs/images/setup-wizard.png)
+
+**Day to day:** right-click the **LPS tray icon** for *Open dashboard*, *Start with Windows* and *Quit LPS*. Quitting LPS doesn't stop running VPSes or apps; they keep running in Docker Desktop.
+
+**Uninstall:** Windows Settings → Apps → *LPS - Local Personal Server*. Your data (`%ProgramData%\LPS`) is kept so a reinstall picks up your VPSes and apps; delete that folder to remove everything.
+
 ## How it works
 
 ```mermaid
@@ -170,7 +193,7 @@ flowchart LR
 |---|---|---|
 | ![App details with build log](docs/images/app.png) | ![Admin account setup](docs/images/setup.png) | ![Dashboard on a phone](docs/images/mobile.png) |
 
-## Quick start (from source)
+## Build from source
 
 ```mermaid
 flowchart LR
@@ -216,7 +239,7 @@ Or allow local scripts for your user once (it only affects scripts on your PC, n
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-Other tasks: `.\build.ps1 run` (build and start), `.\build.ps1 test`, `.\build.ps1 build-all` (release binaries for every OS), `.\build.ps1 clean`.
+Other tasks: `.\build.ps1 run` (build and start), `.\build.ps1 test`, `.\build.ps1 build-all` (release binaries for every OS), `.\build.ps1 installer` (builds `dist\LPS-Setup-<version>.exe`; needs [Inno Setup 6](https://jrsoftware.org/isdl.php)), `.\build.ps1 clean`.
 
 ### Linux / macOS
 
@@ -303,6 +326,10 @@ flowchart TB
     api --> tun["internal/tunnel<br/>Provider interface + Tailscale CLI driver"]
     dock --> img["images/ubuntu-vps<br/>embedded VPS image"]
     main --> web["web/ (React)<br/>embedded dashboard"]
+    desk["cmd/lps<br/>desktop app + tray (Windows)"] --> appk["internal/app<br/>shared server startup"]
+    main --> appk
+    appk --> api
+    inst["installer/windows/lps.iss<br/>Inno Setup"] -.packages.-> desk
 ```
 
 - Frontend: `web/` (React, Vite, TypeScript, TanStack Query, Tailwind). For hot reload, run `npm run dev` in `web/` while `lpsd serve` is running; Vite proxies `/api` to it.
@@ -317,7 +344,7 @@ flowchart LR
     m2["2. Routing<br/>Caddy proxy,<br/>hostname per app,<br/>env vars, auto-detect builds"]
     m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel →<br/>Cloudflare Tunnel (own domain)"]
     m4["4. VPS feel<br/>browser terminal,<br/>git-URL deploys,<br/>stats"]
-    m5["5. Packaging<br/>Windows service,<br/>installer GUI,<br/>Linux + macOS"]
+    m5["5. Packaging<br/>✅ Windows installer + wizard,<br/>Linux + macOS next"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
 
@@ -325,7 +352,7 @@ flowchart LR
 2. **Routing:** a Caddy reverse proxy with a hostname per app and per VPS HTTP port, env vars, and auto-detected builds (Node, Python, static) without a Dockerfile.
 3. **Remote access (pluggable):** ✅ Tailscale (no domain needed, private access to the dashboard, SSH and apps; Funnel for public links). Next: Cloudflare Quick Tunnel (instant public demo links), then Cloudflare Tunnel with your own domain. Optional 2FA (TOTP) before anything is exposed.
 4. **VPS feel:** a browser terminal, git-URL deploys and webhooks, and resource stats.
-5. **Packaging:** run as a Windows service, plus a **one-click/step-by-step installer GUI** (checks WSL2 and Docker, creates the admin, sets up remote access). Then Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
+5. **Packaging:** ✅ Windows installer, tray app and setup wizard (checks WSL2 and Docker, creates the admin, offers remote access, start with Windows). Next: code signing, auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License
 

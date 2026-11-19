@@ -118,6 +118,19 @@ export interface SystemInfo {
   docker: { ok: boolean; version?: string; error?: string; hint?: string };
 }
 
+export interface SetupCheck {
+  id: string;
+  label: string;
+  status: "ok" | "warn" | "fail";
+  detail?: string;
+  required: boolean;
+  fixes?: { kind: "link" | "command" | "action"; label: string; value: string }[];
+}
+
+export interface SetupChecks { os: string; ready: boolean; checks: SetupCheck[] }
+
+export interface AutostartState { supported: boolean; enabled: boolean; error?: string }
+
 export class ApiError extends Error {
   constructor(public status: number, message: string, public needsAction?: NeedsAction) {
     super(message);
@@ -177,6 +190,11 @@ export const api = {
   appLogs: (id: number) => request<{ logs: string }>("GET", `/apps/${id}/logs?tail=300`),
   deployments: (id: number) => request<Deployment[]>("GET", `/apps/${id}/deployments`),
   setAppPublic: (id: number, isPublic: boolean) => request<AppItem>("PUT", `/apps/${id}/public`, { public: isPublic }),
+
+  setupChecks: () => request<SetupChecks>("GET", "/setup/checks"),
+  setupAction: (action: string) => request<{ status: string }>("POST", `/setup/actions/${action}`),
+  autostart: () => request<AutostartState>("GET", "/system/autostart"),
+  setAutostart: (enabled: boolean) => request<AutostartState>("PUT", "/system/autostart", { enabled }),
 
   remote: () => request<RemoteView>("GET", "/remote"),
   setRemote: (enabled: boolean) => request<RemoteView>("PUT", "/remote", { enabled }),

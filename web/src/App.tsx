@@ -8,6 +8,7 @@ import { VPSDetail } from "./pages/VPSDetail";
 import { NewApp } from "./pages/NewApp";
 import { AppDetail } from "./pages/AppDetail";
 import { Remote } from "./pages/Remote";
+import { SetupWizard, wizardActive } from "./pages/SetupWizard";
 
 export default function App() {
   const setup = useQuery({ queryKey: ["setup"], queryFn: api.setupStatus });
@@ -19,7 +20,7 @@ export default function App() {
   if (setup.error) {
     return <div className="p-10 text-center text-rose-600">Cannot reach lpsd: {String(setup.error)}</div>;
   }
-  if (setup.data?.needsSetup) return <AuthPage mode="setup" />;
+  if (setup.data?.needsSetup || wizardActive()) return <SetupWizard />;
   if (me.error instanceof ApiError && me.error.status === 401) return <AuthPage mode="login" />;
 
   return (

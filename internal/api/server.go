@@ -36,6 +36,8 @@ type Config struct {
 	// DashboardPort is the local port lpsd listens on; remote access
 	// publishes it on the tailnet. 0 disables publishing the dashboard.
 	DashboardPort int
+	// DataDir is where lpsd keeps its database (used for the disk-space check).
+	DataDir string
 }
 
 // DefaultConfig returns sensible defaults.
@@ -58,6 +60,7 @@ type Server struct {
 	ui      fs.FS
 	log     *slog.Logger
 	tunnel  tunnel.Provider // nil = remote access unavailable
+	hooks   systemHooks
 
 	remote     remoteState
 	remoteKick chan struct{}
@@ -96,7 +99,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 		logger = slog.Default()
 	}
 	s := &Server{
-		cfg: cfg, store: st, engine: eng, ui: ui, log: logger, tunnel: tp,
+		cfg: cfg, store: st, engine: eng, ui: ui, log: logger, tunnel: tp, hooks: defaultHooks(cfg.DataDir),
 		remoteKick: make(chan struct{}, 1),
 		limiter:    auth.NewLimiter(5, 15*time.Minute),
 		ctx:        ctx,
@@ -134,9 +137,17 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/auth/logout", s.handleLogout)
 
 		r.Group(func(r chi.Router) {
+			r.Use(s.setupOrAuth)
+			r.Get("/setup/checks", s.handleSetupChecks)
+			r.Post("/setup/actions/{action}", s.handleSetupAction)
+		})
+
+		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth)
 			r.Get("/auth/me", s.handleMe)
 			r.Get("/system", s.handleSystem)
+			r.Get("/system/autostart", s.handleGetAutostart)
+			r.Put("/system/autostart", s.handleSetAutostart)
 
 			r.Get("/vps", s.handleListVPS)
 			r.Post("/vps", s.handleCreateVPS)

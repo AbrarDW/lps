@@ -33,13 +33,21 @@ type fakeEngine struct {
 	buildFiles []string // dockerfile name used for each build
 	buildCtx   [][]string
 	buildErr   error
+	pingErr    error
 }
 
 func newFake() *fakeEngine {
 	return &fakeEngine{containers: map[string]string{}, volumes: map[string]bool{}}
 }
 
-func (f *fakeEngine) Ping(context.Context) (string, error)              { return "fake", nil }
+func (f *fakeEngine) Ping(context.Context) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.pingErr != nil {
+		return "", f.pingErr
+	}
+	return "fake", nil
+}
 func (f *fakeEngine) EnsureVPSImage(context.Context, io.Writer) error   { return nil }
 func (f *fakeEngine) newID() string                                     { f.n++; return fmt.Sprintf("c%d", f.n) }
 func (f *fakeEngine) Logs(context.Context, string, int) (string, error) { return "hello\n", nil }

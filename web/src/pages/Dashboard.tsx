@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import { Card, ErrorBox, StateBadge, formatLimits } from "../components/ui";
+import { Card, ErrorBox, StateBadge, Switch, formatLimits } from "../components/ui";
 
 const linkBtn = "rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-indigo-500";
 
@@ -103,6 +103,20 @@ export function Dashboard() {
           {docker?.ok && <> · Docker {docker.version}</>}
         </p>
       )}
+      <AutostartToggle />
     </>
+  );
+}
+
+function AutostartToggle() {
+  const qc = useQueryClient();
+  const auto = useQuery({ queryKey: ["autostart"], queryFn: api.autostart });
+  const set = useMutation({ mutationFn: api.setAutostart, onSuccess: (v) => qc.setQueryData(["autostart"], v) });
+  if (!auto.data?.supported) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <Switch label="Start with Windows" checked={auto.data.enabled} disabled={set.isPending} onChange={(v) => set.mutate(v)} />
+      Start LPS when I sign in to Windows
+    </div>
   );
 }

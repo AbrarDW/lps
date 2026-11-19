@@ -1,0 +1,100 @@
+name: Windows installer
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # attach the installer to GitHub Releases on v* tags
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe for the version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Ensure Inno Setup 6
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: .\build.ps1 installer
+
+      - name: Smoke test lpsd.exe
+        shell: pwsh
+        run: |
+          .\bin\lpsd.exe version
+          $data = Join-Path $env:RUNNER_TEMP 'lps-smoke'
+          $p = Start-Process .\bin\lpsd.exe -ArgumentList 'serve','-data',$data,'-no-remote' -PassThru -NoNewWindow
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            try { if ((Invoke-WebRequest http://127.0.0.1:7070/api/health -UseBasicParsing).StatusCode -eq 200) { $ok = $true; break } } catch {}
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ok) { throw "lpsd did not become healthy" }
+          Write-Host "Setup checks on this runner:"
+          (Invoke-WebRequest http://127.0.0.1:7070/api/setup/checks -UseBasicParsing).Content
+          Stop-Process -Id $p.Id -Force
+
+      - name: Silent install, check, uninstall
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\LPS-Setup-*.exe | Select-Object -First 1
+          Write-Host "Installing $($setup.Name)"
+          Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=autostart' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\LPS'
+          foreach ($f in 'lps.exe','lpsd.exe','unins000.exe') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "missing $f after install" }
+          }
+          $run = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name LPS -ErrorAction SilentlyContinue
+          if (-not $run) { throw "autostart Run value not created" }
+          Write-Host "Autostart: $($run.LPS)"
+          & (Join-Path $dir 'lpsd.exe') version
+          Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path (Join-Path $dir 'lps.exe')) { throw "lps.exe still present after uninstall" }
+          if (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name LPS -ErrorAction SilentlyContinue) { throw "Run value not removed" }
+          Write-Host "Install/uninstall OK"
+
+      - name: Launch desktop app (best effort; CI has no interactive desktop)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $p = Start-Process .\bin\lps.exe -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            try { if ((Invoke-WebRequest http://127.0.0.1:7070/api/health -UseBasicParsing).StatusCode -eq 200) { $ok = $true; break } } catch {}
+            Start-Sleep -Seconds 1
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { Get-Content "$env:ProgramData\LPS\lps.log" -ErrorAction SilentlyContinue; throw "lps.exe did not serve the dashboard" }
+          Write-Host "lps.exe started and served the dashboard"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LPS-Setup
+          path: dist/LPS-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/LPS-Setup-*.exe
