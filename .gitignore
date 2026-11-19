@@ -1,0 +1,19 @@
+# Build output
+/bin/
+/dist/
+*.exe
+
+# Frontend
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+web/*.tsbuildinfo
+
+# Local data / editor
+/lps-data/
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+.idea/
+.vscode/
