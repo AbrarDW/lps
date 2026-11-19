@@ -66,6 +66,7 @@ type Server struct {
 	remoteKick chan struct{}
 	// vpsAppsKick asks vpsAppsLoop to restart stopped VPS apps now.
 	vpsAppsKick chan struct{}
+	stats       *statsState
 
 	ctx    context.Context // cancelled on shutdown; parent of background jobs
 	cancel context.CancelFunc
@@ -104,6 +105,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 		cfg: cfg, store: st, engine: eng, ui: ui, log: logger, tunnel: tp, hooks: defaultHooks(cfg.DataDir),
 		remoteKick:  make(chan struct{}, 1),
 		vpsAppsKick: make(chan struct{}, 1),
+		stats:       newStatsState(),
 		limiter:     auth.NewLimiter(5, 15*time.Minute),
 		ctx:         ctx,
 		cancel:      cancel,
@@ -116,8 +118,9 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 		s.wg.Add(1)
 		go s.remoteLoop()
 	}
-	s.wg.Add(1)
+	s.wg.Add(2)
 	go s.vpsAppsLoop()
+	go s.statsLoop()
 	return s
 }
 
@@ -178,6 +181,9 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps/{id}/dockerfile", s.handleGetAppDockerfile)
 			r.Put("/apps/{id}/dockerfile", s.handleSetAppDockerfile)
 			r.Put("/apps/{id}/run-config", s.handleSetAppRunConfig)
+
+			r.Get("/events", s.handleListEvents)
+			r.Get("/stats", s.handleStats)
 
 			r.Get("/remote", s.handleGetRemote)
 			r.Put("/remote", s.handleSetRemote)

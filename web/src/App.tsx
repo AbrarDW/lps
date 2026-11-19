@@ -8,6 +8,7 @@ import { VPSDetail } from "./pages/VPSDetail";
 import { NewApp } from "./pages/NewApp";
 import { AppDetail } from "./pages/AppDetail";
 import { Remote } from "./pages/Remote";
+import { ActivityPage } from "./pages/Activity";
 import { SetupWizard, wizardActive } from "./pages/SetupWizard";
 import { Tag } from "./components/ui";
 
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/apps/new" element={<NewApp />} />
           <Route path="/apps/:id" element={<AppDetail />} />
           <Route path="/remote" element={<Remote />} />
+          <Route path="/activity" element={<ActivityPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -49,6 +51,7 @@ const navItems = [
   { to: "/vps", label: "VPS", end: false },
   { to: "/apps", label: "Apps", end: false },
   { to: "/remote", label: "Remote access", end: false },
+  { to: "/activity", label: "Activity", end: false },
 ];
 
 function Header({ username }: { username?: string }) {

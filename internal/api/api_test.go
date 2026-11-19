@@ -39,6 +39,8 @@ type fakeEngine struct {
 	fv            *fakeVPS
 	removedImages []string
 	buildErrAt    map[int]bool // builds that failed (no image)
+	cpuNanos      map[string]uint64
+	cpuAt         map[string]time.Time
 }
 
 func newFake() *fakeEngine {

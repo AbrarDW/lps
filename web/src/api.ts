@@ -93,6 +93,33 @@ export interface AppDockerfile {
   suggested?: Detection;
 }
 
+export interface ActivityEvent {
+  id: number;
+  at: string;
+  level: "info" | "warning" | "error";
+  kind: string;
+  subject: "vps" | "app" | "remote" | "auth" | "";
+  subjectId: number;
+  name: string;
+  actor: string;
+  ip: string;
+  message: string;
+}
+
+export type ActivitySubject = "" | "vps" | "app" | "remote" | "auth";
+
+export interface StatPoint { t: number; cpu: number; mem: number }
+
+/** Live usage of one VPS or app. cpu is % of one core; cpuLimit is in cores. */
+export interface UsageStat { cpu: number; cpuLimit: number; mem: number; memLimit: number; points: StatPoint[] }
+
+export interface Stats {
+  host: { cpus: number; memBytes: number };
+  intervalMs: number;
+  vps: Record<string, UsageStat>;
+  apps: Record<string, UsageStat>;
+}
+
 export interface NeedsAction { message: string; url?: string }
 
 export interface TunnelStatus {
@@ -224,6 +251,16 @@ export const api = {
   setupAction: (action: string) => request<{ status: string }>("POST", `/setup/actions/${action}`),
   autostart: () => request<AutostartState>("GET", "/system/autostart"),
   setAutostart: (enabled: boolean) => request<AutostartState>("PUT", "/system/autostart", { enabled }),
+
+  events: (q: { subject?: ActivitySubject; id?: number; before?: number; limit?: number } = {}) => {
+    const p = new URLSearchParams();
+    if (q.subject) p.set("subject", q.subject);
+    if (q.id) p.set("id", String(q.id));
+    if (q.before) p.set("before", String(q.before));
+    if (q.limit) p.set("limit", String(q.limit));
+    return request<ActivityEvent[]>("GET", `/events?${p}`);
+  },
+  stats: () => request<Stats>("GET", "/stats"),
 
   remote: () => request<RemoteView>("GET", "/remote"),
   setRemote: (enabled: boolean) => request<RemoteView>("PUT", "/remote", { enabled }),

@@ -12,13 +12,21 @@
   .\build.ps1 test         # vet + tests + frontend typecheck
   .\build.ps1 build-all    # release binaries for Windows, Linux and macOS
   .\build.ps1 installer    # dist\LPS-Setup-<version>.exe (needs Inno Setup 6)
+  .\build.ps1 sign -Files a.exe,b.exe   # Authenticode-sign files (see "Code signing" below)
+
+  Code signing: set LPS_SIGN_PFX to a .pfx code-signing certificate (and
+  LPS_SIGN_PASSWORD to its password) and the installer task signs lps.exe,
+  lpsd.exe and the setup program. LPS_SIGN_TIMESTAMP overrides the RFC 3161
+  timestamp server. Without LPS_SIGN_PFX the files are left unsigned.
 
   If PowerShell says "running scripts is disabled on this system", run:
     powershell -ExecutionPolicy Bypass -File .\build.ps1
 #>
 param(
-    [ValidateSet('all', 'web', 'build', 'test', 'run', 'clean', 'build-all', 'installer')]
-    [string]$Task = 'all'
+    [ValidateSet('all', 'web', 'build', 'test', 'run', 'clean', 'build-all', 'installer', 'sign')]
+    [string]$Task = 'all',
+    # Files for the "sign" task.
+    [string[]]$Files = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -120,6 +128,49 @@ function Find-Iscc {
     return $null
 }
 
+function Find-SignTool {
+    $cmd = Get-Command signtool -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    if (Test-Path $kits) {
+        $found = Get-ChildItem $kits -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+        if ($found) { return $found.FullName }
+    }
+    return $null
+}
+
+# Authenticode-sign files with the certificate in $env:LPS_SIGN_PFX. Signed
+# downloads build reputation with Chrome and Windows SmartScreen; unsigned ones
+# are flagged as rarely downloaded. Returns $false (and changes nothing) when
+# no certificate is configured.
+function Sign-Files([string[]]$Paths) {
+    if (-not $env:LPS_SIGN_PFX) {
+        Write-Host "    Not signing (LPS_SIGN_PFX is not set): Chrome and SmartScreen may warn about the download." -ForegroundColor Yellow
+        return $false
+    }
+    if (-not (Test-Path $env:LPS_SIGN_PFX)) { Fail "LPS_SIGN_PFX points to a missing file: $env:LPS_SIGN_PFX" }
+    $signtool = Find-SignTool
+    if (-not $signtool) { Fail "signtool.exe was not found. Install the Windows SDK (Signing Tools for Desktop Apps)." }
+    $ts = if ($env:LPS_SIGN_TIMESTAMP) { $env:LPS_SIGN_TIMESTAMP } else { 'http://timestamp.digicert.com' }
+    foreach ($p in $Paths) {
+        Step "Signing $p"
+        $signArgs = @('sign', '/fd', 'SHA256', '/f', $env:LPS_SIGN_PFX, '/d', 'LPS - Local Personal Server', '/du', 'https://github.com/AbrarDW/lps')
+        if ($env:LPS_SIGN_PASSWORD) { $signArgs += @('/p', $env:LPS_SIGN_PASSWORD) }
+        if ($ts -ne 'none') { $signArgs += @('/tr', $ts, '/td', 'SHA256') }
+        Invoke-Native "signtool ($p)" { & $signtool @signArgs $p | Out-Host }
+    }
+    return $true
+}
+
+# Write <file>.sha256 ("<hash>  <name>", the sha256sum format) next to a file.
+function Write-Checksum([string]$Path) {
+    $hash = (Get-FileHash -Algorithm SHA256 $Path).Hash.ToLower()
+    $line = "$hash  $(Split-Path $Path -Leaf)"
+    Set-Content -Path "$Path.sha256" -Value $line -Encoding ascii -NoNewline
+    Write-Host "    SHA-256: $hash"
+}
+
 function Check-Docker {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         Write-Host "    Warning: Docker was not found. Install Docker Desktop (WSL2 backend) to create VPSes and apps: https://www.docker.com/products/docker-desktop/" -ForegroundColor Yellow
@@ -185,11 +236,19 @@ switch ($Task) {
         Build-Web
         Build-Lpsd
         Build-Desktop
+        $signed = Sign-Files @((Join-Path $PSScriptRoot 'bin\lps.exe'), (Join-Path $PSScriptRoot 'bin\lpsd.exe'))
         $v = (Get-Version) -replace '^v', ''
         Step "Building the installer with Inno Setup"
         Invoke-Native 'iscc' { & $iscc "/DAppVersion=$v" (Join-Path $PSScriptRoot 'installer\windows\lps.iss') }
+        $setup = Join-Path $PSScriptRoot "dist\LPS-Setup-$v.exe"
+        if ($signed) { [void](Sign-Files @($setup)) }
+        Write-Checksum $setup
         Write-Host ""
-        Write-Host "Done: dist\LPS-Setup-$v.exe" -ForegroundColor Green
+        Write-Host "Done: dist\LPS-Setup-$v.exe$(if ($signed) { ' (signed)' } else { ' (unsigned)' })" -ForegroundColor Green
+    }
+    'sign' {
+        if (-not $Files) { Fail "Pass the files to sign: .\build.ps1 sign -Files a.exe,b.exe" }
+        if (-not (Sign-Files $Files)) { Fail "Set LPS_SIGN_PFX (and LPS_SIGN_PASSWORD) to sign." }
     }
     'clean' {
         $bin = Join-Path $PSScriptRoot 'bin'

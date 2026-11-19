@@ -6,6 +6,7 @@
 #   lps-app stop   <name>
 #   lps-app status <name>          prints "running" or "stopped"
 #   lps-app logs   <name> [lines]
+#   lps-app usage  <name>          prints CPU ticks, memory in KiB, tick rate, 1024
 #
 # The start command runs in its own session (so stop can end the whole
 # process group) with output appended to ~/.lps/logs/<name>.log.
@@ -76,6 +77,29 @@ status)
 	;;
 logs)
 	tail -n "${3:-300}" "$logf" 2>/dev/null || true
+	;;
+usage)
+	# CPU ticks and memory summed over the app's process group, then the
+	# tick rate and the memory unit: "ticks kib ticks_per_second 1024".
+	# Memory is RssAnon (the processes' own memory), like the container
+	# figures, which leave out file-backed pages the kernel can reclaim.
+	# Fields after "pid (comm) ": 3 = process group, 12/13 = user/system ticks.
+	ticks=0
+	kib=0
+	if alive; then
+		for f in /proc/[0-9]*/stat; do
+			line=$(cat "$f" 2>/dev/null) || continue
+			line=${line##*) }
+			# shellcheck disable=SC2086
+			set -- $line
+			[ "$3" = "$pid" ] || continue
+			ticks=$((ticks + ${12} + ${13}))
+			while read -r key val _; do
+				if [ "$key" = "RssAnon:" ]; then kib=$((kib + val)); fi
+			done <"${f%/stat}/status" 2>/dev/null || true
+		done
+	fi
+	echo "$ticks $kib $(getconf CLK_TCK) 1024"
 	;;
 *)
 	echo "unknown command: $cmd" >&2
