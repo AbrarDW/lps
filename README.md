@@ -109,4 +109,4 @@ make test
 
 ## License
 
-To be decided before the first release (MIT or Apache-2.0).
+[MIT](LICENSE)
