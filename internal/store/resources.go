@@ -239,6 +239,8 @@ type Deployment struct {
 const (
 	DeployBuilding = "building"
 	DeployRunning  = "running"
+	// DeployReplaced is a deployment that ran until a newer one succeeded.
+	DeployReplaced = "replaced"
 	DeployFailed   = "failed"
 )
 
@@ -253,11 +255,26 @@ func (s *Store) CreateDeployment(ctx context.Context, appID int64) (*Deployment,
 	return d, nil
 }
 
-// FinishDeployment records the outcome of a deployment.
+// FinishDeployment records the outcome of a deployment. When it is now
+// running, the app's earlier running deployments are marked replaced.
 func (s *Store) FinishDeployment(ctx context.Context, id int64, status, image, log string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE deployments SET status = ?, image = ?, log = ?, finished_at = ? WHERE id = ?`,
-		status, image, log, time.Now().UTC(), id)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE deployments SET status = ?, image = ?, log = ?, finished_at = ? WHERE id = ?`,
+		status, image, log, time.Now().UTC(), id); err != nil {
+		return err
+	}
+	if status == DeployRunning {
+		if _, err := tx.ExecContext(ctx, `UPDATE deployments SET status = ?
+			WHERE app_id = (SELECT app_id FROM deployments WHERE id = ?) AND id <> ? AND status = ?`,
+			DeployReplaced, id, id, DeployRunning); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ListDeployments returns an app's deployments, newest first.

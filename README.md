@@ -1,8 +1,8 @@
 # LPS — Local Personal Server
 
-Turn your home PC into your own VPS host. LPS runs **Linux VPSes** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
+Turn your home PC into your own VPS host. LPS runs **Linux VPS** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
 
-> Status: **early development**. Linux VPSes with a [browser terminal](#terminal-in-the-browser), app deploys (with generated Dockerfiles), [remote access with Tailscale](#remote-access-with-tailscale) and the [Windows installer](#install-on-windows) work. A reverse proxy with hostnames is next. See the [roadmap](#roadmap).
+> Status: **early development**. Linux VPS with a [browser terminal](#terminal-in-the-browser), app deploys (with generated Dockerfiles), [remote access with Tailscale](#remote-access-with-tailscale) and the [Windows installer](#install-on-windows) work. A reverse proxy with hostnames is next. See the [roadmap](#roadmap).
 
 The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy dotted paper, built with Tailwind 4 (tokens in `web/src/index.css`) and IBM Plex fonts bundled with the app, so it works offline.
 
@@ -27,9 +27,9 @@ The wizard checks everything LPS needs and tells you how to fix what's missing: 
 
 ![Setup wizard: checking this PC](docs/images/setup-wizard.png)
 
-**Day to day:** right-click the **LPS tray icon** for *Open dashboard*, *Start with Windows* and *Quit LPS*. Quitting LPS doesn't stop running VPSes or apps; they keep running in Docker Desktop.
+**Day to day:** right-click the **LPS tray icon** for *Open dashboard*, *Start with Windows* and *Quit LPS*. Quitting LPS doesn't stop running VPS or apps; they keep running in Docker Desktop.
 
-**Uninstall:** Windows Settings → Apps → *LPS - Local Personal Server*. Your data (`%ProgramData%\LPS`) is kept so a reinstall picks up your VPSes and apps; delete that folder to remove everything.
+**Uninstall:** Windows Settings → Apps → *LPS - Local Personal Server*. Your data (`%ProgramData%\LPS`) is kept so a reinstall picks up your VPS and apps; delete that folder to remove everything.
 
 ## How it works
 
@@ -127,7 +127,7 @@ flowchart TD
 
 ### Deploying an app into a VPS
 
-On the New app form, set **Run on** to one of your VPSes (or open a VPS and press **Deploy an app here**). The app then runs as a process inside that VPS, like on a real server, instead of in its own container:
+On the New app form, set **Run on** to one of your VPS (or open a VPS and press **Deploy an app here**). The app then runs as a process inside that VPS, like on a real server, instead of in its own container:
 
 - **Code from a folder on this PC:** copied to `~/apps/<name>` in the VPS on every deploy (`.dockerignore` is honoured; `node_modules`, `.venv` and `.git` are skipped).
 - **Code from a folder inside the VPS:** for example a `git clone` you made in the terminal. Redeploy re-runs install and start, so `git pull` and then Redeploy.
@@ -166,7 +166,7 @@ A VPS here is a container, not a full VM. It shares the host's Linux kernel (WSL
 
 ## Remote access with Tailscale
 
-Reach the dashboard, SSH into your VPSes and open your apps from your phone or laptop, from anywhere. No domain, no router changes, and nothing is exposed to the internet unless you turn on a public link for an app.
+Reach the dashboard, SSH into your VPS and open your apps from your phone or laptop, from anywhere. No domain, no router changes, and nothing is exposed to the internet unless you turn on a public link for an app.
 
 ```mermaid
 flowchart LR

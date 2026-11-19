@@ -262,6 +262,32 @@ func (c *Client) Remove(ctx context.Context, id string) error {
 	return err
 }
 
+// ImageTags implements Engine.
+func (c *Client) ImageTags(ctx context.Context, repo string) ([]string, error) {
+	res, err := c.cli.ImageList(ctx, client.ImageListOptions{Filters: make(client.Filters).Add("reference", repo)})
+	if err != nil {
+		return nil, err
+	}
+	var tags []string
+	for _, img := range res.Items {
+		for _, t := range img.RepoTags {
+			if strings.HasPrefix(t, repo+":") {
+				tags = append(tags, t)
+			}
+		}
+	}
+	return tags, nil
+}
+
+// RemoveImage implements Engine. Images still used by a container are kept.
+func (c *Client) RemoveImage(ctx context.Context, ref string) error {
+	_, err := c.cli.ImageRemove(ctx, ref, client.ImageRemoveOptions{PruneChildren: true})
+	if cerrdefs.IsNotFound(err) || cerrdefs.IsConflict(err) {
+		return nil
+	}
+	return err
+}
+
 // RemoveVolume implements Engine.
 func (c *Client) RemoveVolume(ctx context.Context, name string) error {
 	_, err := c.cli.VolumeRemove(ctx, name, client.VolumeRemoveOptions{Force: true})

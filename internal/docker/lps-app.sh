@@ -20,7 +20,16 @@ mkdir -p "$base/run" "$base/logs"
 
 # The pid file holds "<pid> <start time>": the start time tells a live app
 # from an unrelated process that reused the pid after the VPS restarted.
-starttime() { cut -d' ' -f22 "/proc/$1/stat" 2>/dev/null || true; }
+# /proc/<pid>/stat is "pid (comm) state ...", and comm may contain spaces
+# (npm renames itself "npm start"), so drop everything up to ") " first:
+# the start time is then the 20th field.
+starttime() {
+	s=$(cat "/proc/$1/stat" 2>/dev/null) || return 0
+	s=${s##*) }
+	# shellcheck disable=SC2086
+	set -- $s
+	echo "${20:-}"
+}
 
 alive() {
 	[ -f "$pidf" ] || return 1
@@ -30,13 +39,13 @@ alive() {
 
 stop() {
 	if [ -f "$pidf" ] && read -r pid st <"$pidf" && [ -n "$pid" ] && [ "$(starttime "$pid")" = "$st" ]; then
-		kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+		kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
 		i=0
 		while [ "$(starttime "$pid")" = "$st" ] && [ $i -lt 100 ]; do
 			sleep 0.1
 			i=$((i + 1))
 		done
-		kill -KILL -- "-$pid" 2>/dev/null || true
+		kill -KILL "-$pid" 2>/dev/null || true
 	fi
 	rm -f "$pidf"
 }

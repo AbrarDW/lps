@@ -240,6 +240,10 @@ func (s *Server) runVPSDeploy(a *store.App, log io.Writer) (string, error) {
 	if _, err := s.helper(ctx, v, a, "stop"); err != nil {
 		return label, err
 	}
+	if addrs := s.listening(ctx, v, a.ContainerPort); len(addrs) > 0 {
+		return label, fmt.Errorf("port %d is already in use inside VPS %s (%s) by a process LPS did not start. "+
+			"Stop it (e.g. find it with: sudo ss -ltnp) or pick another port", a.ContainerPort, v.Name, strings.Join(addrs, ", "))
+	}
 	if staging != "" {
 		if err := s.vpsExec(ctx, v, "root", "/", []string{"sh", "-c", `rm -rf "$1" && mv "$2" "$1"`, "sh", dir, staging}, nil, log); err != nil {
 			return label, fmt.Errorf("replace %s: %w", dir, err)

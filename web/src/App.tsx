@@ -46,7 +46,7 @@ export default function App() {
 
 const navItems = [
   { to: "/", label: "Dashboard", end: true },
-  { to: "/vps", label: "VPSes", end: false },
+  { to: "/vps", label: "VPS", end: false },
   { to: "/apps", label: "Apps", end: false },
   { to: "/remote", label: "Remote access", end: false },
 ];

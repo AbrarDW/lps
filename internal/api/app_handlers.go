@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -281,12 +282,40 @@ func (s *Server) startDeploy(a *store.App) (*store.Deployment, error) {
 		if ferr := s.store.FinishDeployment(s.ctx, d.ID, status, image, buf.String()); ferr != nil {
 			s.log.Error("finish deployment", "err", ferr)
 		}
+		if err == nil && !a.InVPS() {
+			s.pruneImages(a.Name, keepImages)
+		}
 		s.mu.Lock()
 		delete(s.deploying, a.ID)
 		delete(s.liveLogs, d.ID)
 		s.mu.Unlock()
 	}()
 	return d, nil
+}
+
+// keepImages is how many recent successful app images are kept: the live one
+// and the one before it.
+const keepImages = 2
+
+// pruneImages deletes an app's old images (lps-app-<name>:<deployment>),
+// keeping the newest keep: the live one and the previous one. Without it every
+// redeploy leaves another image behind. keep 0 removes them all.
+func (s *Server) pruneImages(name string, keep int) {
+	tags, err := s.engine.ImageTags(s.ctx, "lps-app-"+name)
+	if err != nil {
+		s.log.Warn("list app images", "app", name, "err", err)
+		return
+	}
+	num := func(t string) int { n, _ := strconv.Atoi(t[strings.LastIndexByte(t, ':')+1:]); return n }
+	sort.Slice(tags, func(i, j int) bool { return num(tags[i]) > num(tags[j]) })
+	for i, t := range tags {
+		if i < keep {
+			continue
+		}
+		if err := s.engine.RemoveImage(s.ctx, t); err != nil {
+			s.log.Warn("remove old image", "image", t, "err", err)
+		}
+	}
 }
 
 func (s *Server) runDeploy(a *store.App, d *store.Deployment, log io.Writer) (string, error) {
@@ -407,6 +436,7 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = s.engine.Remove(r.Context(), docker.AppContainerName(a.Name))
+		s.pruneImages(a.Name, 0)
 	}
 	if err := s.store.DeleteApp(r.Context(), a.ID); err != nil {
 		s.internalError(w, err)

@@ -7,8 +7,8 @@ import { Button, Callout, Card, ErrorBox, Icon, Input, PageHeader, StateBadge, S
 const th = "border-b border-line px-4 py-2.5 text-left font-mono text-[11px] font-medium tracking-[0.08em] text-ink-faint uppercase";
 const td = "border-b border-line-soft px-4 py-3 align-middle";
 
-/** Table of VPSes (dashboard and /vps). */
-export function VPSTable({ title = "Linux VPSes", action }: { title?: string; action?: React.ReactNode }) {
+/** Table of VPS (dashboard and /vps). */
+export function VPSTable({ title = "Linux VPS", action }: { title?: string; action?: React.ReactNode }) {
   const vps = useQuery({ queryKey: ["vps"], queryFn: api.listVPS, refetchInterval: 5000 });
   const [filter, setFilter] = useState("");
   const list = (vps.data ?? []).filter((v) => v.name.includes(filter.trim().toLowerCase()));
@@ -20,7 +20,7 @@ export function VPSTable({ title = "Linux VPSes", action }: { title?: string; ac
       actions={
         <>
           <label className="relative flex items-center">
-            <span className="sr-only">Filter VPSes</span>
+            <span className="sr-only">Filter VPS</span>
             <span className="pointer-events-none absolute left-2.5 text-ink-faint">
               <Icon name="search" />
             </span>
@@ -107,7 +107,7 @@ export function AppList({ title = "Apps", action, limit }: { title?: string; act
       {apps.data?.length === 0 && (
         <p className="m-0 p-4 text-ink-muted">
           No apps yet. Point LPS at a project folder and it runs it for you: in its own container (it writes a Dockerfile if there isn't one) or
-          inside one of your VPSes.{" "}
+          inside one of your VPS.{" "}
           <Link to="/apps/new">Add an app</Link>.
         </p>
       )}
@@ -186,7 +186,7 @@ export function Dashboard() {
       )}
 
       <section aria-label="Summary" className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-3">
-        <Stat label="VPSes" foot={vps.data?.length ? `SSH ports ${vps.data.map((v) => v.sshPort).join(", ")}` : "None yet"}>
+        <Stat label="VPS" foot={vps.data?.length ? `SSH ports ${vps.data.map((v) => v.sshPort).join(", ")}` : "None yet"}>
           {vpsRunning} <span className="text-sm font-normal text-ink-muted">running of {vps.data?.length ?? 0}</span>
         </Stat>
         <Stat label="Apps" foot={appsPublic ? `${appsPublic} with a public link` : "Private to this PC and your devices"}>
@@ -232,8 +232,8 @@ export function VPSListPage() {
   return (
     <>
       <PageHeader
-        sheet="Sheet 02 — VPSes"
-        title="Linux VPSes"
+        sheet="Sheet 02 — VPS"
+        title="Linux VPS"
         subtitle="Ubuntu machines you SSH into, each in its own container with CPU/RAM limits and a persistent /home."
         actions={
           <Link to="/vps/new" className={buttonClass("primary")}>
@@ -242,7 +242,7 @@ export function VPSListPage() {
           </Link>
         }
       />
-      <VPSTable title="All VPSes" />
+      <VPSTable title="All VPS" />
     </>
   );
 }

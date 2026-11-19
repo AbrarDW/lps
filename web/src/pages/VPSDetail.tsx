@@ -57,7 +57,7 @@ export function VPSDetail() {
     <>
       <nav aria-label="Breadcrumb" className="flex gap-2 font-mono text-xs text-ink-faint uppercase">
         <Link to="/vps" className="no-underline">
-          VPSes
+          VPS
         </Link>
         <span aria-hidden="true">/</span>
         <span className="text-ink">{v.name}</span>

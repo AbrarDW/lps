@@ -270,6 +270,7 @@ const stateIntent: Record<string, Intent> = {
   pending: "primary",
   error: "danger",
   failed: "danger",
+  replaced: "neutral",
 };
 
 export function StateBadge({ state }: { state: State | string }) {

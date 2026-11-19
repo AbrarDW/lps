@@ -24,7 +24,7 @@ export interface VPS {
 export interface Deployment {
   id: number;
   appId: number;
-  status: "building" | "running" | "failed";
+  status: "building" | "running" | "failed" | "replaced";
   image: string;
   log: string;
   startedAt: string;

@@ -74,7 +74,7 @@ export function Remote() {
         }
       >
         <p className="mb-5 text-[13px] text-ink-muted">
-          Reach the dashboard, your VPSes and your apps from your own phone or laptop, from anywhere. Traffic goes through your
+          Reach the dashboard, your VPS and your apps from your own phone or laptop, from anywhere. Traffic goes through your
           private Tailscale network: nothing is opened on your router, and only devices signed in to your Tailscale account
           can connect.
         </p>
@@ -107,7 +107,7 @@ export function Remote() {
                 disabled={busy || (!r.enabled && !signedIn)}
                 onChange={(v) => toggle.mutate(v)}
               />
-              <span>{r.enabled ? "On: your dashboard, VPSes and apps are on your tailnet" : "Off"}</span>
+              <span>{r.enabled ? "On: your dashboard, VPS and apps are on your tailnet" : "Off"}</span>
             </div>
           </Step>
           <Step n={5} title="Install Tailscale on your phone or laptop" state={r.enabled ? "todo" : "blocked"}>

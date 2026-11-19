@@ -306,6 +306,14 @@ func TestVPSAppRestartsAfterVPSRestart(t *testing.T) {
 		t.Fatalf("folder not checked:\n%s", strings.Join(fv.execs, "\n"))
 	}
 
+	// Redeploying a VPS app replaces the earlier deployment.
+	h.do("POST", path+"/deploy", nil, nil)
+	waitFor(t, func() bool {
+		var ds []store.Deployment
+		h.do("GET", path+"/deployments", nil, &ds)
+		return len(ds) == 2 && ds[0].Status == store.DeployRunning && ds[1].Status == store.DeployReplaced
+	})
+
 	// Two apps in one VPS cannot share a port.
 	clash := createAppReq{Name: "api2", VPSID: v.ID, SourceKind: "vps", VPSPath: "~/code/api2", ContainerPort: 3000, StartCmd: "npm start"}
 	if code := h.do("POST", "/api/apps", clash, nil); code != 409 {

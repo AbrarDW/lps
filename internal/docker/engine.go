@@ -59,6 +59,10 @@ type Engine interface {
 	Stop(ctx context.Context, id string) error
 	// Remove force-removes a container; a missing container is not an error.
 	Remove(ctx context.Context, id string) error
+	// ImageTags lists the local tags of an image repository, e.g. "lps-app-site:7".
+	ImageTags(ctx context.Context, repo string) ([]string, error)
+	// RemoveImage deletes an image tag; a missing image is not an error.
+	RemoveImage(ctx context.Context, ref string) error
 	// RemoveVolume deletes a named volume; a missing volume is not an error.
 	RemoveVolume(ctx context.Context, name string) error
 	// State returns StateRunning, StateStopped or StateMissing.
