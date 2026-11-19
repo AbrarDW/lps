@@ -1,0 +1,111 @@
+// Typed client for the lpsd REST API.
+
+export type State = "running" | "stopped" | "missing" | "provisioning" | "error";
+
+export interface User { id: number; username: string; createdAt: string }
+
+export interface VPS {
+  id: number;
+  name: string;
+  sshUser: string;
+  sshPort: number;
+  sshPublicKey: string;
+  cpus: number;
+  memoryMb: number;
+  containerId: string;
+  createdAt: string;
+  state: State;
+  error?: string;
+  provisionLog?: string;
+}
+
+export interface Deployment {
+  id: number;
+  appId: number;
+  status: "building" | "running" | "failed";
+  image: string;
+  log: string;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface AppItem {
+  id: number;
+  name: string;
+  sourcePath: string;
+  containerPort: number;
+  hostPort: number;
+  cpus: number;
+  memoryMb: number;
+  containerId: string;
+  createdAt: string;
+  state: State;
+  error?: string;
+  deploying: boolean;
+  lastDeploy?: Deployment;
+}
+
+export interface SystemInfo {
+  version: string;
+  os: string;
+  arch: string;
+  bindIp: string;
+  docker: { ok: boolean; version?: string; error?: string; hint?: string };
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method,
+    credentials: "same-origin",
+    headers: {
+      "X-LPS-Request": "1", // CSRF guard, required by lpsd for writes
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return undefined as T;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText);
+  return data as T;
+}
+
+export const api = {
+  setupStatus: () => request<{ needsSetup: boolean }>("GET", "/setup"),
+  setup: (username: string, password: string) => request<User>("POST", "/setup", { username, password }),
+  login: (username: string, password: string) => request<User>("POST", "/auth/login", { username, password }),
+  logout: () => request<void>("POST", "/auth/logout"),
+  me: () => request<User>("GET", "/auth/me"),
+  system: () => request<SystemInfo>("GET", "/system"),
+
+  listVPS: () => request<VPS[]>("GET", "/vps"),
+  getVPS: (id: number) => request<VPS>("GET", `/vps/${id}`),
+  createVPS: (v: {
+    name: string; sshUser: string; sshPublicKey: string; password: string; cpus: number; memoryMb: number;
+  }) => request<VPS>("POST", "/vps", v),
+  vpsAction: (id: number, action: "start" | "stop") => request<VPS>("POST", `/vps/${id}/${action}`),
+  deleteVPS: (id: number, keepData: boolean) => request<void>("DELETE", `/vps/${id}${keepData ? "?keepData=true" : ""}`),
+  vpsLogs: (id: number) => request<{ logs: string }>("GET", `/vps/${id}/logs?tail=300`),
+
+  listApps: () => request<AppItem[]>("GET", "/apps"),
+  getApp: (id: number) => request<AppItem>("GET", `/apps/${id}`),
+  createApp: (a: { name: string; sourcePath: string; containerPort: number; cpus: number; memoryMb: number }) =>
+    request<AppItem>("POST", "/apps", a),
+  deployApp: (id: number) => request<Deployment>("POST", `/apps/${id}/deploy`),
+  appAction: (id: number, action: "start" | "stop") => request<AppItem>("POST", `/apps/${id}/${action}`),
+  deleteApp: (id: number) => request<void>("DELETE", `/apps/${id}`),
+  appLogs: (id: number) => request<{ logs: string }>("GET", `/apps/${id}/logs?tail=300`),
+  deployments: (id: number) => request<Deployment[]>("GET", `/apps/${id}/deployments`),
+};
+
+/** Host to show in SSH commands / URLs: the dashboard's host when ports are published beyond localhost. */
+export function displayHost(bindIp: string | undefined): string {
+  if (!bindIp || bindIp === "127.0.0.1" || bindIp === "::1") return "localhost";
+  if (bindIp === "0.0.0.0" || bindIp === "::") return window.location.hostname;
+  return bindIp;
+}
