@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -34,12 +34,36 @@ func StartDocker() error {
 	if p == "" {
 		return fmt.Errorf("Docker Desktop is not installed")
 	}
+	// Docker Desktop is a GUI app: start it normally so its window can show.
 	cmd := exec.Command(p)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+// wslOKUntil caches a successful WSL check so the wizard's polling doesn't
+// start wsl.exe every few seconds. Failures are re-checked on every call.
+var (
+	wslMu      sync.Mutex
+	wslOKUntil time.Time
+)
+
+func wslInstalled(ctx context.Context) bool {
+	wslMu.Lock()
+	defer wslMu.Unlock()
+	if time.Now().Before(wslOKUntil) {
+		return true
+	}
+	wctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(wctx, "wsl.exe", "--status")
+	HideConsole(cmd)
+	if cmd.Run() != nil {
+		return false
+	}
+	wslOKUntil = time.Now().Add(time.Minute)
+	return true
 }
 
 func osChecks(ctx context.Context) []Check {
@@ -57,11 +81,7 @@ func osChecks(ctx context.Context) []Check {
 	out = append(out, win)
 
 	wsl := Check{ID: "wsl", Label: "WSL2 (runs the Linux VPSes)", Required: true}
-	wctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(wctx, "wsl.exe", "--status")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if err := cmd.Run(); err == nil {
+	if wslInstalled(ctx) {
 		wsl.Status, wsl.Detail = StatusOK, "Installed"
 	} else {
 		wsl.Status = StatusFail

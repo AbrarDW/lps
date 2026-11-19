@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"syscall"
 
 	"fyne.io/systray"
 	"golang.org/x/sys/windows"
@@ -22,7 +21,7 @@ var icon []byte
 
 func openBrowser(url string) {
 	cmd := exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	platform.HideConsole(cmd)
 	_ = cmd.Start()
 }
 

@@ -355,11 +355,22 @@ func (s *Server) handleSetRemote(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.freshStatus()
 	s.reconcile(r.Context())
 	writeJSON(w, 200, s.buildRemoteView(r.Context(), false))
 }
 
+// freshStatus makes the next provider Status call bypass its cache, if any.
+func (s *Server) freshStatus() {
+	if inv, ok := s.tunnel.(interface{ InvalidateStatus() }); ok {
+		inv.InvalidateStatus()
+	}
+}
+
 func (s *Server) handleSyncRemote(w http.ResponseWriter, r *http.Request) {
+	if s.tunnel != nil {
+		s.freshStatus()
+	}
 	s.reconcile(r.Context())
 	writeJSON(w, 200, s.buildRemoteView(r.Context(), false))
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func fixture(t *testing.T, name string) []byte {
@@ -187,5 +188,60 @@ func TestNotInstalled(t *testing.T) {
 	st, err := ts.Status(context.Background())
 	if err != nil || st.Installed {
 		t.Fatalf("status: %+v %v", st, err)
+	}
+}
+
+func TestStatusIsCached(t *testing.T) {
+	f := &fakeCLI{status: fixture(t, "status_ready.json"), ports: map[int]bool{}}
+	ts := NewTailscaleWith("tailscale", f.run)
+	ts.statusTTL = time.Hour
+	ctx := context.Background()
+	countStatus := func() int {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		n := 0
+		for _, c := range f.calls {
+			if strings.HasPrefix(c, "status") {
+				n++
+			}
+		}
+		return n
+	}
+	for i := 0; i < 5; i++ {
+		if st, err := ts.Status(ctx); err != nil || !st.Running {
+			t.Fatalf("status: %+v %v", st, err)
+		}
+	}
+	if n := countStatus(); n != 1 {
+		t.Fatalf("tailscale status ran %d times, want 1 (cached)", n)
+	}
+	// Apply invalidates the cache so the next Status is fresh.
+	if err := ts.Apply(ctx, Exposure{ProtoTCP, 2201, 2201, false}); err != nil {
+		t.Fatal(err)
+	}
+	before := countStatus()
+	ts.Status(ctx)
+	if countStatus() != before+1 {
+		t.Fatal("Status after Apply should query tailscale again")
+	}
+}
+
+func TestInvalidateStatus(t *testing.T) {
+	f := &fakeCLI{status: fixture(t, "status_no_https.json"), ports: map[int]bool{}}
+	ts := NewTailscaleWith("tailscale", f.run)
+	ts.statusTTL = time.Hour
+	st, _ := ts.Status(context.Background())
+	if st.HTTPSEnabled {
+		t.Fatal("fixture should have HTTPS off")
+	}
+	f.mu.Lock()
+	f.status = fixture(t, "status_ready.json") // user enables HTTPS in the admin console
+	f.mu.Unlock()
+	if st, _ := ts.Status(context.Background()); st.HTTPSEnabled {
+		t.Fatal("expected cached (stale) status before invalidation")
+	}
+	ts.InvalidateStatus()
+	if st, _ := ts.Status(context.Background()); !st.HTTPSEnabled {
+		t.Fatal("Check again must see the new status")
 	}
 }

@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/abrardw/lps/internal/platform"
 )
 
 // Admin pages shown to the user when a tailnet feature must be switched on.
@@ -34,6 +36,7 @@ type Runner func(ctx context.Context, name string, args ...string) (stdout, stde
 
 func execRunner(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	platform.HideConsole(cmd) // no flashing console window when run from lps.exe
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
@@ -49,11 +52,18 @@ type Tailscale struct {
 
 	mu  sync.Mutex
 	bin string
+
+	// Status is polled by several pages; cache it briefly so tailscale.exe
+	// isn't started every few seconds. Apply/Remove invalidate the cache.
+	statusTTL time.Duration
+	cacheMu   sync.Mutex
+	cached    *Status
+	cachedAt  time.Time
 }
 
 // NewTailscale returns a provider using the real CLI.
 func NewTailscale() *Tailscale {
-	return &Tailscale{run: execRunner, lookup: findTailscale, timeout: 30 * time.Second}
+	return &Tailscale{run: execRunner, lookup: findTailscale, timeout: 30 * time.Second, statusTTL: 10 * time.Second}
 }
 
 // NewTailscaleWith is for tests: a fixed binary name and a fake runner.
@@ -196,8 +206,35 @@ func ParseStatus(data []byte) (Status, error) {
 	return st, nil
 }
 
-// Status implements Provider.
+// Status implements Provider. Results are cached for statusTTL.
 func (t *Tailscale) Status(ctx context.Context) (Status, error) {
+	t.cacheMu.Lock()
+	if t.cached != nil && time.Since(t.cachedAt) < t.statusTTL {
+		st := *t.cached
+		t.cacheMu.Unlock()
+		return st, nil
+	}
+	t.cacheMu.Unlock()
+	st, err := t.fetchStatus(ctx)
+	if err == nil {
+		t.cacheMu.Lock()
+		t.cached, t.cachedAt = &st, time.Now()
+		t.cacheMu.Unlock()
+	}
+	return st, err
+}
+
+// InvalidateStatus drops the cached status so the next call asks Tailscale
+// (used by the "Check again" button).
+func (t *Tailscale) InvalidateStatus() { t.invalidateStatus() }
+
+func (t *Tailscale) invalidateStatus() {
+	t.cacheMu.Lock()
+	t.cached = nil
+	t.cacheMu.Unlock()
+}
+
+func (t *Tailscale) fetchStatus(ctx context.Context) (Status, error) {
 	out, err := t.cli(ctx, "status", "--json", "--peers=false")
 	if errors.Is(err, ErrNotInstalled) {
 		return Status{}, nil
@@ -301,6 +338,7 @@ func containsInt(xs []int, v int) bool {
 
 // Apply implements Provider.
 func (t *Tailscale) Apply(ctx context.Context, e Exposure) error {
+	defer t.invalidateStatus()
 	st, err := t.Status(ctx)
 	if err != nil {
 		return err
@@ -328,6 +366,7 @@ func (t *Tailscale) Apply(ctx context.Context, e Exposure) error {
 
 // Remove implements Provider.
 func (t *Tailscale) Remove(ctx context.Context, e Exposure) error {
+	defer t.invalidateStatus()
 	_, err := t.cli(ctx, RemoveArgs(e)...)
 	if err == nil || errors.Is(err, ErrNotInstalled) {
 		return nil

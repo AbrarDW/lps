@@ -130,7 +130,7 @@ function CheckRow({ c }: { c: SetupCheck }) {
 }
 
 function ChecksStep({ onNext }: { onNext: () => void }) {
-  const checks = useQuery({ queryKey: ["setupChecks"], queryFn: api.setupChecks, refetchInterval: 4000 });
+  const checks = useQuery({ queryKey: ["setupChecks"], queryFn: api.setupChecks, refetchInterval: 10000 });
   const d = checks.data;
   return (
     <Card title="1. Check this PC">

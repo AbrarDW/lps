@@ -33,6 +33,10 @@ jobs:
             choco install innosetup -y --no-progress
           }
 
+      - name: Go tests on Windows (Windows-only code paths)
+        shell: pwsh
+        run: go test ./internal/platform/... ./internal/tunnel/... ./internal/app/...
+
       - name: Build installer
         shell: pwsh
         run: .\build.ps1 installer
