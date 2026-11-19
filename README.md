@@ -2,41 +2,116 @@
 
 Turn your home PC into your own VPS host. LPS runs **Linux VPSes** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
 
-> Status: **early development (milestone 1)**. Linux VPSes and Dockerfile app deploys work locally. Remote access (tunnels), a reverse proxy with hostnames and the one-click installer are next. See the [roadmap](#roadmap).
+> Status: **early development (milestone 1)**. Linux VPSes and Dockerfile app deploys work locally. A reverse proxy with hostnames, remote access and the one-click installer are next. See the [roadmap](#roadmap).
+
+![LPS dashboard](docs/images/dashboard.png)
 
 ## How it works
 
-```
-Browser ──► lpsd (Go, single binary: API + embedded React dashboard, SQLite)
-                │ Docker Engine API
-                ▼
-        Docker Desktop (WSL2 on Windows) / Docker Engine (Linux)
-          ├─ lps-vps-<name>   Ubuntu 24.04 + OpenSSH, own /home volume, CPU/RAM limits
-          └─ lps-app-<name>   your project, built from its Dockerfile
+```mermaid
+flowchart LR
+    you(["You<br/>browser / SSH client"])
+
+    subgraph pc["Your home PC (Windows 10/11)"]
+        lpsd["<b>lpsd</b><br/>single Go binary<br/>API + React dashboard"]
+        db[("SQLite<br/>lps.db")]
+        subgraph docker["Docker Desktop · WSL2 Linux VM"]
+            vps1["lps-vps-dev-box<br/>Ubuntu 24.04 + SSH"]
+            vps2["lps-vps-…<br/>Ubuntu 24.04 + SSH"]
+            app1["lps-app-my-site<br/>built from your Dockerfile"]
+            vol[("/home volumes")]
+        end
+        src[/"Project folders<br/>C:\projects\…"/]
+    end
+
+    you -- "dashboard :7070" --> lpsd
+    you -- "ssh :2201…2299" --> vps1
+    you -- "http :8100…8199" --> app1
+    lpsd --- db
+    lpsd -- "Docker Engine API" --> docker
+    src -. "build context" .-> lpsd
+    vps1 --- vol
+    vps2 --- vol
 ```
 
 - **Windows host, Linux VPS.** On Windows, Docker Desktop runs Linux containers inside a lightweight WSL2 VM, so every VPS is real Linux. You SSH in, `apt install`, `git clone` and run things just as you would on a rented VPS.
 - **Each VPS** is an Ubuntu 24.04 container with `sshd`. It has its own SSH user (key or password), passwordless sudo for key-only accounts, CPU and memory limits, and a persistent `/home` volume that survives restarts and can be kept when you delete the VPS.
-- **Each app** is a folder on your PC with a `Dockerfile`. LPS builds it, runs it, publishes its port, and keeps a log of every deployment. Redeploying swaps the container. A failed build leaves the running version alone.
+- **Each app** is a folder on your PC with a `Dockerfile`. LPS builds it, runs it, publishes its port, and keeps a log of every deployment.
 - **Secure by default.** The dashboard and all published ports bind to `127.0.0.1`. The admin password is hashed with bcrypt, sessions are HttpOnly SameSite=Strict cookies, writes need a CSRF header, logins are rate-limited, and VPS containers are unprivileged with no Docker socket access.
+
+### Creating a VPS
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as You
+    participant L as lpsd
+    participant D as Docker
+    participant V as VPS container
+
+    U->>L: New VPS (name, SSH user, key and/or password, limits)
+    L->>L: Validate, reserve SSH port 22xx, save to SQLite
+    L-->>U: 202 Accepted · state "provisioning"
+    L->>D: Build lps/ubuntu-vps image (first time only)
+    L->>D: Create /home volume + container (CPU/RAM limits, 127.0.0.1:22xx → 22)
+    L->>D: Copy one-time init file (user, key, password)
+    L->>D: Start
+    D->>V: entrypoint: create user, install key, set password
+    V->>V: Delete init file, start sshd
+    U->>V: ssh dev@localhost -p 22xx
+```
+
+### Deploying an app
+
+```mermaid
+flowchart TD
+    A["New app / Redeploy"] --> B{"Dockerfile in<br/>project folder?"}
+    B -- no --> X["Rejected with an error"]
+    B -- yes --> C["Pack folder<br/>(honours .dockerignore,<br/>skips .git and node_modules)"]
+    C --> D["docker build → lps-app-name:N<br/>(log streamed to the dashboard)"]
+    D -- "build fails" --> F["Deployment marked failed<br/>running version keeps serving"]
+    D -- "build OK" --> E["Remove old container"]
+    E --> G["Create + start new container<br/>127.0.0.1:81xx → app port"]
+    G --> H["Deployment marked running ✅"]
+```
+
+### VPS lifecycle
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> provisioning: create
+    provisioning --> running: started
+    provisioning --> error: build/create failed
+    running --> stopped: stop
+    stopped --> running: start
+    running --> [*]: delete
+    stopped --> [*]: delete
+    error --> [*]: delete
+```
+
+When you delete a VPS you can keep its `/home` volume; creating a VPS with the same name later picks it up again.
 
 ### Limits compared with a real VM
 
-A VPS here is a container, not a full VM. It shares the host's Linux kernel (WSL2's kernel on Windows). `systemd` is not running, so start services with their own commands or a process manager like `supervisord`/`pm2`. Running Docker inside a VPS is not supported yet. CPU limits are quotas: `nproc` still shows every host core. If you need full VMs, see Multipass/Hyper-V below.
+A VPS here is a container, not a full VM. It shares the host's Linux kernel (WSL2's kernel on Windows). `systemd` is not running, so start services with their own commands or a process manager like `supervisord`/`pm2`. Running Docker inside a VPS is not supported yet. CPU limits are quotas: `nproc` still shows every host core.
 
-## Existing solutions
+## Screenshots
 
-| Tool | What it does | Why LPS is different |
+| Create a VPS | VPS details |
+|---|---|
+| ![New VPS form](docs/images/new-vps.png) | ![VPS details with SSH command](docs/images/vps.png) |
+
+| App with deployment log | First-run setup | Phone |
 |---|---|---|
-| [Coolify](https://coolify.io), [Dokploy](https://dokploy.com), [CapRover](https://caprover.com), [Dokku](https://dokku.com) | Self-hosted Heroku-style PaaS: git push or click to deploy, builds Docker images, Traefik/Caddy proxy with Let's Encrypt. | Built for a Linux server with a public IP. They don't run on a Windows desktop and don't handle home networks behind CGNAT. Coolify is the closest; worth studying. |
-| [CasaOS](https://casaos.io), [Umbrel](https://umbrel.com), [YunoHost](https://yunohost.org) | Home-server OSes with app stores on Docker. | Install catalogue apps, not "run my project folder" or "give me an SSH box". |
-| [Portainer](https://www.portainer.io) | Web UI for Docker. | Raw container management, with no VPS, build or tunnel workflow. |
-| [ngrok](https://ngrok.com), [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) | Expose a local port to the internet without port forwarding. | Only the networking part. LPS will set these up for you (pluggable). |
-| [Multipass](https://multipass.run), Hyper-V, VirtualBox | Full Ubuntu VMs. | Real VMs, but heavy and manual. No deploy, URL or remote-management layer. |
-
-**LPS's niche:** a Windows-first, one-click "home VPS" that combines SSH-able Linux boxes, Coolify-style deploys and built-in tunnel setup, and works behind CGNAT without router changes.
+| ![App details with build log](docs/images/app.png) | ![Admin account setup](docs/images/setup.png) | ![Dashboard on a phone](docs/images/mobile.png) |
 
 ## Quick start (from source)
+
+```mermaid
+flowchart LR
+    a["Install Docker Desktop<br/>(WSL2 backend)"] --> b["Build lpsd<br/>make all"] --> c["Run<br/>lpsd serve"] --> d["Open 127.0.0.1:7070<br/>create admin"] --> e["New VPS / New app"]
+```
 
 Requirements:
 
@@ -89,23 +164,52 @@ Open <http://127.0.0.1:7070>, create the admin account, then:
 | `-bind-ip` | `127.0.0.1` | Where VPS SSH ports (2201–2299) and app ports (8100–8199) are published. Use `0.0.0.0` to reach them from your LAN. |
 | `-secure-cookies` | `false` | Set this when the dashboard is served over HTTPS. |
 
+### Ports at a glance
+
+| Port range | Used for | Bound to (default) |
+|---|---|---|
+| `7070` | Dashboard and API | `127.0.0.1` |
+| `2201–2299` | SSH into each VPS | `127.0.0.1` (`-bind-ip`) |
+| `8100–8199` | Each app's HTTP port | `127.0.0.1` (`-bind-ip`) |
+
 ## Development
 
 ```bash
 make test
 ```
 
-- Backend: `cmd/lpsd` (entry point), `internal/api` (HTTP and handlers), `internal/docker` (Docker Engine client), `internal/store` (SQLite and migrations), `internal/auth`, `internal/builder` (build contexts with `.dockerignore`), `images/ubuntu-vps` (the VPS image, embedded in the binary).
+```mermaid
+flowchart TB
+    main["cmd/lpsd<br/>entry point, flags"] --> api["internal/api<br/>HTTP handlers, auth, background jobs"]
+    api --> store["internal/store<br/>SQLite + migrations"]
+    api --> auth["internal/auth<br/>bcrypt, sessions, rate limit"]
+    api --> dock["internal/docker<br/>Engine interface + Docker client"]
+    api --> build["internal/builder<br/>build context, .dockerignore"]
+    dock --> img["images/ubuntu-vps<br/>embedded VPS image"]
+    main --> web["web/ (React)<br/>embedded dashboard"]
+```
+
 - Frontend: `web/` (React, Vite, TypeScript, TanStack Query, Tailwind). For hot reload, run `npm run dev` in `web/` while `lpsd serve` is running; Vite proxies `/api` to it.
 - Database: SQLite through the pure-Go `modernc.org/sqlite` driver, so there's no CGO and cross-compiling to Windows is easy. Migrations live in `internal/store/migrations` and are applied on start. The SQL is kept portable so PostgreSQL can be added as an option later.
+- `internal/docker.Engine` is an interface; API tests use an in-memory fake, so `go test ./...` needs no Docker.
 
 ## Roadmap
 
+```mermaid
+flowchart LR
+    m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
+    m2["2. Routing<br/>Caddy proxy,<br/>hostname per app,<br/>env vars, auto-detect builds"]
+    m3["3. Remote access<br/>Tailscale →<br/>Cloudflare Quick Tunnel →<br/>Cloudflare Tunnel (own domain)"]
+    m4["4. VPS feel<br/>browser terminal,<br/>git-URL deploys,<br/>stats"]
+    m5["5. Packaging<br/>Windows service,<br/>installer GUI,<br/>Linux + macOS"]
+    m1 --> m2 --> m3 --> m4 --> m5
+```
+
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Routing:** a Caddy reverse proxy with a hostname per app and per VPS HTTP port, env vars, and auto-detected builds (Node, Python, static) without a Dockerfile.
-3. **Remote access (pluggable):** Cloudflare Tunnel first (works behind CGNAT), then Tailscale, then port forwarding with DDNS and Let's Encrypt. Optional 2FA (TOTP) before anything is exposed.
+3. **Remote access (pluggable):** Tailscale first (no domain needed, private access to the dashboard, SSH and apps; Funnel for a public link), then Cloudflare Quick Tunnel (instant public demo links), then Cloudflare Tunnel with your own domain. Optional 2FA (TOTP) before anything is exposed.
 4. **VPS feel:** a browser terminal, git-URL deploys and webhooks, and resource stats.
-5. **Packaging:** run as a Windows service, plus a **one-click/step-by-step installer GUI** (checks WSL2 and Docker, creates the admin, sets up the tunnel). Then Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
+5. **Packaging:** run as a Windows service, plus a **one-click/step-by-step installer GUI** (checks WSL2 and Docker, creates the admin, sets up remote access). Then Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License
 
