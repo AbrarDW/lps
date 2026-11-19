@@ -306,6 +306,12 @@ func TestVPSAppRestartsAfterVPSRestart(t *testing.T) {
 		t.Fatalf("folder not checked:\n%s", strings.Join(fv.execs, "\n"))
 	}
 
+	// Two apps in one VPS cannot share a port.
+	clash := createAppReq{Name: "api2", VPSID: v.ID, SourceKind: "vps", VPSPath: "~/code/api2", ContainerPort: 3000, StartCmd: "npm start"}
+	if code := h.do("POST", "/api/apps", clash, nil); code != 409 {
+		t.Fatalf("same port in one VPS: %d", code)
+	}
+
 	// Simulate a VPS restart: its processes are gone.
 	vpsPath := fmt.Sprintf("/api/vps/%d", v.ID)
 	h.do("POST", vpsPath+"/stop", nil, nil)

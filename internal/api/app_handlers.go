@@ -166,13 +166,26 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.VPSID > 0 {
-		if _, err := s.store.GetVPS(r.Context(), req.VPSID); err != nil {
+		v, err := s.store.GetVPS(r.Context(), req.VPSID)
+		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				writeError(w, 400, "that VPS does not exist")
 			} else {
 				s.internalError(w, err)
 			}
 			return
+		}
+		others, err := s.store.ListAppsByVPS(r.Context(), v.ID)
+		if err != nil {
+			s.internalError(w, err)
+			return
+		}
+		for _, o := range others {
+			if o.ContainerPort == req.ContainerPort {
+				writeError(w, http.StatusConflict, fmt.Sprintf("app %s already uses port %d in VPS %s; pick another port (your app gets it as $PORT)",
+					o.Name, o.ContainerPort, v.Name))
+				return
+			}
 		}
 	}
 	if req.SaveToProject && req.Dockerfile != "" {

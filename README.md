@@ -125,6 +125,24 @@ flowchart TD
     G --> H["Deployment marked running ✅"]
 ```
 
+### Deploying an app into a VPS
+
+On the New app form, set **Run on** to one of your VPSes (or open a VPS and press **Deploy an app here**). The app then runs as a process inside that VPS, like on a real server, instead of in its own container:
+
+- **Code from a folder on this PC:** copied to `~/apps/<name>` in the VPS on every deploy (`.dockerignore` is honoured; `node_modules`, `.venv` and `.git` are skipped).
+- **Code from a folder inside the VPS:** for example a `git clone` you made in the terminal. Redeploy re-runs install and start, so `git pull` and then Redeploy.
+
+LPS fills in **system packages** (installed with apt if missing), an **install command** and a **start command** for the detected project type; edit them as you like. The start command gets the port in `$PORT` and must listen on `0.0.0.0`. LPS keeps it running: it is restarted after a crash and when the VPS restarts. Its output is on the app's **App logs** tab and in `~/.lps/logs/<name>.log` inside the VPS.
+
+```mermaid
+flowchart LR
+    B["Browser / tailnet / Funnel"] --> P["127.0.0.1:81xx"]
+    P --> R["relay container<br/>lps-relay-name"]
+    R -- "lps-net" --> V["VPS container<br/>app on $PORT"]
+```
+
+A VPS only publishes its SSH port, so each VPS app gets a tiny relay container that publishes the app's port on the PC. Local, tailnet and public links work as for any app. A VPS can't be deleted while apps run in it, and two apps in one VPS need different ports.
+
 ### VPS lifecycle
 
 ```mermaid
@@ -329,7 +347,7 @@ npm, yarn and pnpm are picked from the lockfile. You can switch templates or edi
 |---|---|---|
 | `7070` | Dashboard and API | `127.0.0.1` |
 | `2201–2299` | SSH into each VPS | `127.0.0.1` (`-bind-ip`) |
-| `8100–8199` | Each app's HTTP port | `127.0.0.1` (`-bind-ip`) |
+| `8100–8199` | Each app's HTTP port (for VPS apps, via its relay) | `127.0.0.1` (`-bind-ip`) |
 
 ## Development
 
@@ -366,7 +384,7 @@ flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Routing<br/>Caddy proxy,<br/>hostname per app,<br/>env vars, auto-detect builds"]
     m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel →<br/>Cloudflare Tunnel (own domain)"]
-    m4["4. VPS feel<br/>✅ browser terminal,<br/>git-URL deploys,<br/>stats"]
+    m4["4. VPS feel<br/>✅ browser terminal,<br/>✅ apps in a VPS,<br/>git-URL deploys,<br/>stats"]
     m5["5. Packaging<br/>✅ Windows installer + wizard,<br/>Linux + macOS next"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
@@ -374,7 +392,7 @@ flowchart LR
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Routing:** a Caddy reverse proxy with a hostname per app and per VPS HTTP port, env vars, and auto-detected builds (Node, Python, static) without a Dockerfile.
 3. **Remote access (pluggable):** ✅ Tailscale (no domain needed, private access to the dashboard, SSH and apps; Funnel for public links). Next: Cloudflare Quick Tunnel (instant public demo links), then Cloudflare Tunnel with your own domain. Optional 2FA (TOTP) before anything is exposed.
-4. **VPS feel:** ✅ browser terminal. Next: git-URL deploys and webhooks, and resource stats.
+4. **VPS feel:** ✅ browser terminal, ✅ deploy apps into a VPS. Next: git-URL deploys and webhooks, and resource stats.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard (checks WSL2 and Docker, creates the admin, offers remote access, start with Windows). Next: code signing, auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License

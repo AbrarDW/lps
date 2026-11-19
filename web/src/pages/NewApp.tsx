@@ -17,6 +17,9 @@ function useDebounced<T>(value: T, ms: number) {
 
 type CodeFrom = "pc" | "vps";
 
+/** Template labels name the Docker images they use; drop that when running in a VPS. */
+const vpsLabel = (label: string) => label.replace(/ \((nginx|Apache)\)$/, "");
+
 export function NewApp() {
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -231,7 +234,7 @@ export function NewApp() {
                 <div className="text-[13px] text-ink-2">
                   {usePCFolder && detect.data ? (
                     <>
-                      Detected: <b>{detect.data.detection.label}</b>. Check the commands below.
+                      Detected: <b>{vpsLabel(detect.data.detection.label)}</b>. Check the commands below.
                     </>
                   ) : (
                     "Pick a project type to fill these in, or type your own."
@@ -251,7 +254,7 @@ export function NewApp() {
                     {!run.type && <option value="">Choose…</option>}
                     {runChoices.map((t) => (
                       <option key={t.type} value={t.type}>
-                        {t.label.replace(/ \((nginx|Apache)\)$/, "")}
+                        {vpsLabel(t.label)}
                         {usePCFolder && t.type === detect.data?.detection.type ? " (detected)" : ""}
                       </option>
                     ))}
