@@ -4,7 +4,7 @@ Turn your home PC into your own VPS host. LPS runs **Linux VPSes** (Ubuntu machi
 
 > Status: **early development**. Linux VPSes with a [browser terminal](#terminal-in-the-browser), app deploys (with generated Dockerfiles), [remote access with Tailscale](#remote-access-with-tailscale) and the [Windows installer](#install-on-windows) work. A reverse proxy with hostnames is next. See the [roadmap](#roadmap).
 
-The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy grid paper, built with Tailwind 4 (tokens in `web/src/index.css`) and IBM Plex fonts bundled with the app, so it works offline.
+The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy dotted paper, built with Tailwind 4 (tokens in `web/src/index.css`) and IBM Plex fonts bundled with the app, so it works offline.
 
 ![LPS dashboard](docs/images/dashboard.png)
 
