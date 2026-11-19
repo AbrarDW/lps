@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, displayHost } from "../api";
+import { DockerfileCard } from "../components/DockerfileCard";
 import { ActionBox, Button, Card, ErrorBox, LogView, StateBadge, Switch, formatLimits } from "../components/ui";
 
 export function AppDetail() {
@@ -149,6 +150,8 @@ export function AppDetail() {
           </div>
         )}
       </Card>
+
+      <DockerfileCard appId={a.id} deploying={deploying} />
 
       <Card title="Deployments">
         <div className="mb-3 flex flex-wrap gap-2">

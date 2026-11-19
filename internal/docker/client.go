@@ -70,16 +70,16 @@ func (c *Client) EnsureVPSImage(ctx context.Context, log io.Writer) error {
 	if err := builder.TarFS(images.UbuntuVPS, "ubuntu-vps", &buf); err != nil {
 		return err
 	}
-	return c.BuildImage(ctx, &buf, images.UbuntuVPSTag, log)
+	return c.BuildImage(ctx, &buf, images.UbuntuVPSTag, "Dockerfile", log)
 }
 
 // BuildImage implements Engine.
-func (c *Client) BuildImage(ctx context.Context, buildContext io.Reader, tag string, log io.Writer) error {
+func (c *Client) BuildImage(ctx context.Context, buildContext io.Reader, tag, dockerfile string, log io.Writer) error {
 	res, err := c.cli.ImageBuild(ctx, buildContext, client.ImageBuildOptions{
 		Tags:        []string{tag},
 		Remove:      true,
 		ForceRemove: true,
-		Dockerfile:  "Dockerfile",
+		Dockerfile:  dockerfile,
 		Labels:      map[string]string{"lps.managed": "true"},
 	})
 	if err != nil {

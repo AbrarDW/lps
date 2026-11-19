@@ -36,7 +36,7 @@ flowchart LR
 
 - **Windows host, Linux VPS.** On Windows, Docker Desktop runs Linux containers inside a lightweight WSL2 VM, so every VPS is real Linux. You SSH in, `apt install`, `git clone` and run things just as you would on a rented VPS.
 - **Each VPS** is an Ubuntu 24.04 container with `sshd`. It has its own SSH user (key or password), passwordless sudo for key-only accounts, CPU and memory limits, and a persistent `/home` volume that survives restarts and can be kept when you delete the VPS.
-- **Each app** is a folder on your PC with a `Dockerfile`. LPS builds it, runs it, publishes its port, and keeps a log of every deployment.
+- **Each app** is a project folder on your PC. If it has no `Dockerfile`, LPS detects the project type and writes one for you to review. LPS builds it, runs it, publishes its port, and keeps a log of every deployment.
 - **Secure by default.** The dashboard and all published ports bind to `127.0.0.1`. The admin password is hashed with bcrypt, sessions are HttpOnly SameSite=Strict cookies, writes need a CSRF header, logins are rate-limited, and VPS containers are unprivileged with no Docker socket access.
 
 ### Creating a VPS
@@ -65,9 +65,13 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["New app / Redeploy"] --> B{"Dockerfile in<br/>project folder?"}
-    B -- no --> X["Rejected with an error"]
-    B -- yes --> C["Pack folder<br/>(honours .dockerignore,<br/>skips .git and node_modules)"]
+    A["New app"] --> B{"Dockerfile in<br/>project folder?"}
+    B -- yes --> C["Pack folder<br/>(honours .dockerignore,<br/>skips .git, node_modules, .venv)"]
+    B -- no --> G1["LPS detects the project type<br/>Node · Python · Go · PHP · static"]
+    G1 --> G2["You review / edit the<br/>generated Dockerfile"]
+    G2 -- "kept in LPS (default)" --> C
+    G2 -- "or saved into the folder" --> C
+    R["Redeploy"] --> C
     C --> D["docker build → lps-app-name:N<br/>(log streamed to the dashboard)"]
     D -- "build fails" --> F["Deployment marked failed<br/>running version keeps serving"]
     D -- "build OK" --> E["Remove old container"]
@@ -241,7 +245,27 @@ make all
 Open <http://127.0.0.1:7070>, create the admin account, then:
 
 1. **New VPS** → choose a name and paste your SSH public key (`ssh-keygen -t ed25519` creates one, including in PowerShell). The first VPS builds the Ubuntu image, which takes a few minutes. After that you get a command like `ssh dev@localhost -p 2201`.
-2. **New app** → enter the absolute path to a project folder with a `Dockerfile` and the port the app listens on. Try `examples\static-site` (port 80). The app is served at `http://localhost:81xx`.
+2. **New app** → enter the absolute path to a project folder. If it has no `Dockerfile`, LPS proposes one (see below). Check the port the app listens on, then **Create and deploy**. Try `examples\static-site` (port 80). The app is served at `http://localhost:81xx`.
+
+### Projects without a Dockerfile
+
+LPS looks at the folder and generates a Dockerfile you can review and edit before deploying:
+
+| LPS finds | Template | Port |
+|---|---|---|
+| `package.json` with `next` | Next.js (build + `npm start`) | 3000 |
+| `package.json` with Vite / Create React App / Angular | Static site: build with Node, serve with nginx | 80 |
+| `package.json` (other) | Node.js server (`npm start` or `node server.js`) | 3000 |
+| `manage.py` | Django with gunicorn | 8000 |
+| `fastapi` / `flask` in requirements | FastAPI with uvicorn / Flask with gunicorn | 8000 |
+| `requirements.txt` / `pyproject.toml` | Python (`python main.py`) | 8000 |
+| `go.mod` | Go (multi-stage build) | 8080 |
+| `composer.json` / `index.php` | PHP 8.3 with Apache | 80 |
+| `index.html` | Static website with nginx | 80 |
+
+npm, yarn and pnpm are picked from the lockfile. You can switch templates or edit the text freely. By default the Dockerfile is **kept in LPS** and your folder isn't touched; tick **Also save this Dockerfile into the project folder** to get a real `Dockerfile` (and `.dockerignore`) you can commit. LPS never overwrites an existing one. You can edit an LPS-kept Dockerfile later on the app page (**Dockerfile → Save & redeploy**).
+
+![Generated Dockerfile in the New app form](docs/images/new-app-dockerfile.png)
 
 ### `lpsd serve` flags
 

@@ -47,6 +47,30 @@ export interface AppItem {
   publicPort: number;
   remoteUrl?: string;
   publicUrl?: string;
+  dockerfile: string;
+  dockerfileSource: "lps" | "project";
+}
+
+export interface Detection {
+  type: string;
+  label: string;
+  port: number;
+  dockerfile: string;
+  notes: string[] | null;
+}
+
+export interface DetectResult {
+  hasDockerfile: boolean;
+  projectDockerfile?: string;
+  detection: Detection;
+  templates: Detection[];
+}
+
+export interface AppDockerfile {
+  source: "lps" | "project";
+  dockerfile: string;
+  projectHasDockerfile: boolean;
+  suggested?: Detection;
 }
 
 export interface NeedsAction { message: string; url?: string }
@@ -135,8 +159,18 @@ export const api = {
 
   listApps: () => request<AppItem[]>("GET", "/apps"),
   getApp: (id: number) => request<AppItem>("GET", `/apps/${id}`),
-  createApp: (a: { name: string; sourcePath: string; containerPort: number; cpus: number; memoryMb: number }) =>
-    request<AppItem>("POST", "/apps", a),
+  createApp: (a: {
+    name: string;
+    sourcePath: string;
+    containerPort: number;
+    cpus: number;
+    memoryMb: number;
+    dockerfile?: string;
+    saveToProject?: boolean;
+  }) => request<AppItem>("POST", "/apps", a),
+  detectApp: (sourcePath: string) => request<DetectResult>("POST", "/apps/detect", { sourcePath }),
+  appDockerfile: (id: number) => request<AppDockerfile>("GET", `/apps/${id}/dockerfile`),
+  setAppDockerfile: (id: number, dockerfile: string) => request<AppItem>("PUT", `/apps/${id}/dockerfile`, { dockerfile }),
   deployApp: (id: number) => request<Deployment>("POST", `/apps/${id}/deploy`),
   appAction: (id: number, action: "start" | "stop") => request<AppItem>("POST", `/apps/${id}/${action}`),
   deleteApp: (id: number) => request<void>("DELETE", `/apps/${id}`),

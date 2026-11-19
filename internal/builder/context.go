@@ -15,15 +15,19 @@ import (
 	"github.com/moby/patternmatcher"
 )
 
-// ErrNoDockerfile is returned when the project has no Dockerfile.
-// (Auto-detection for Node/Python/static projects comes in milestone 2.)
+// ErrNoDockerfile is returned when the project has no Dockerfile and LPS has
+// no generated one for it.
 var ErrNoDockerfile = errors.New("no Dockerfile found in project directory")
 
-// alwaysIgnore keeps huge or sensitive folders out of the build context.
-var alwaysIgnore = []string{".git", "node_modules"}
+// GeneratedDockerfile is the name a Dockerfile stored in LPS gets inside the
+// build context, so it never clashes with a Dockerfile in the project.
+const GeneratedDockerfile = "Dockerfile.lps"
 
-// Validate checks that dir exists and contains a Dockerfile.
-func Validate(dir string) error {
+// alwaysIgnore keeps huge, generated or sensitive folders out of the build context.
+var alwaysIgnore = []string{".git", "node_modules", ".venv", "venv", "__pycache__", ".next", GeneratedDockerfile}
+
+// ValidateDir checks that dir exists and is a directory.
+func ValidateDir(dir string) error {
 	st, err := os.Stat(dir)
 	if err != nil {
 		return fmt.Errorf("source path: %w", err)
@@ -31,15 +35,31 @@ func Validate(dir string) error {
 	if !st.IsDir() {
 		return fmt.Errorf("source path %q is not a directory", dir)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "Dockerfile")); err != nil {
+	return nil
+}
+
+// HasDockerfile reports whether dir contains a Dockerfile.
+func HasDockerfile(dir string) bool {
+	st, err := os.Stat(filepath.Join(dir, "Dockerfile"))
+	return err == nil && st.Mode().IsRegular()
+}
+
+// Validate checks that dir exists and contains a Dockerfile.
+func Validate(dir string) error {
+	if err := ValidateDir(dir); err != nil {
+		return err
+	}
+	if !HasDockerfile(dir) {
 		return ErrNoDockerfile
 	}
 	return nil
 }
 
-// TarDir writes dir as a tar stream to w, honouring .dockerignore.
-// Paths inside the archive always use forward slashes (works from Windows hosts).
-func TarDir(dir string, w io.Writer) error {
+// TarDir writes dir as a tar stream to w, honouring .dockerignore. Files in
+// extra (name -> content) are added to the archive root, e.g. a generated
+// Dockerfile.lps. Paths inside the archive always use forward slashes (works
+// from Windows hosts).
+func TarDir(dir string, w io.Writer, extra map[string][]byte) error {
 	patterns, err := readDockerignore(dir)
 	if err != nil {
 		return err
@@ -111,6 +131,14 @@ func TarDir(dir string, w io.Writer) error {
 	})
 	if err != nil {
 		return err
+	}
+	for name, data := range extra {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
+			return err
+		}
+		if _, err := tw.Write(data); err != nil {
+			return err
+		}
 	}
 	return tw.Close()
 }

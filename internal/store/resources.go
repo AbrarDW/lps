@@ -91,22 +91,23 @@ type App struct {
 	MemoryMB      int       `json:"memoryMb"`
 	ContainerID   string    `json:"containerId"`
 	PublicPort    int       `json:"publicPort"` // Funnel port; 0 = no public link
+	Dockerfile    string    `json:"dockerfile"` // stored in LPS; "" = use the project's Dockerfile
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
-const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, public_port, created_at`
+const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, public_port, dockerfile, created_at`
 
 func scanApp(r scanner) (*App, error) {
 	a := &App{}
-	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.PublicPort, &a.CreatedAt)
+	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.PublicPort, &a.Dockerfile, &a.CreatedAt)
 	return a, err
 }
 
 // CreateApp inserts an app record.
 func (s *Store) CreateApp(ctx context.Context, a *App) error {
 	a.CreatedAt = time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `INSERT INTO apps (name, source_path, container_port, host_port, cpus, memory_mb, container_id, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, a.Name, a.SourcePath, a.ContainerPort, a.HostPort, a.CPUs, a.MemoryMB, a.ContainerID, a.CreatedAt)
+	res, err := s.db.ExecContext(ctx, `INSERT INTO apps (name, source_path, container_port, host_port, cpus, memory_mb, container_id, dockerfile, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, a.Name, a.SourcePath, a.ContainerPort, a.HostPort, a.CPUs, a.MemoryMB, a.ContainerID, a.Dockerfile, a.CreatedAt)
 	if err != nil {
 		return mapErr(err)
 	}
@@ -144,6 +145,12 @@ func (s *Store) ListApps(ctx context.Context) ([]*App, error) {
 // SetAppContainer records the container currently serving an app.
 func (s *Store) SetAppContainer(ctx context.Context, id int64, containerID string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE apps SET container_id = ? WHERE id = ?`, containerID, id)
+	return err
+}
+
+// SetAppDockerfile stores (or clears with "") an app's LPS-managed Dockerfile.
+func (s *Store) SetAppDockerfile(ctx context.Context, id int64, dockerfile string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE apps SET dockerfile = ? WHERE id = ?`, dockerfile, id)
 	return err
 }
 

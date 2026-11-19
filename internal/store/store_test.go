@@ -133,3 +133,18 @@ func TestRemoteSettingsAndExposures(t *testing.T) {
 		t.Fatalf("public port = %d", got.PublicPort)
 	}
 }
+
+func TestAppDockerfile(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	a := &App{Name: "web", SourcePath: "/src", ContainerPort: 80, HostPort: 8100, Dockerfile: "FROM nginx\n"}
+	if err := s.CreateApp(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetApp(ctx, a.ID); got.Dockerfile != "FROM nginx\n" {
+		t.Fatalf("dockerfile = %q", got.Dockerfile)
+	}
+	s.SetAppDockerfile(ctx, a.ID, "")
+	if got, _ := s.GetApp(ctx, a.ID); got.Dockerfile != "" {
+		t.Fatalf("not cleared: %q", got.Dockerfile)
+	}
+}

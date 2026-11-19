@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -29,6 +30,8 @@ type fakeEngine struct {
 	volumes    map[string]bool
 	vpsSpecs   []docker.VPSSpec
 	builds     []string
+	buildFiles []string // dockerfile name used for each build
+	buildCtx   [][]string
 	buildErr   error
 }
 
@@ -62,11 +65,22 @@ func (f *fakeEngine) CreateVPS(_ context.Context, s docker.VPSSpec) (string, err
 	f.containers[id] = docker.StateStopped
 	return id, nil
 }
-func (f *fakeEngine) BuildImage(_ context.Context, r io.Reader, tag string, log io.Writer) error {
+func (f *fakeEngine) BuildImage(_ context.Context, r io.Reader, tag, dockerfile string, log io.Writer) error {
+	var names []string
+	tr := tar.NewReader(r)
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			break
+		}
+		names = append(names, h.Name)
+	}
 	io.Copy(io.Discard, r)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.builds = append(f.builds, tag)
+	f.buildFiles = append(f.buildFiles, dockerfile)
+	f.buildCtx = append(f.buildCtx, names)
 	fmt.Fprintln(log, "Step 1/1")
 	return f.buildErr
 }

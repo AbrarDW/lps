@@ -148,6 +148,7 @@ func (s *Server) Handler() http.Handler {
 
 			r.Get("/apps", s.handleListApps)
 			r.Post("/apps", s.handleCreateApp)
+			r.Post("/apps/detect", s.handleDetectApp)
 			r.Get("/apps/{id}", s.handleGetApp)
 			r.Delete("/apps/{id}", s.handleDeleteApp)
 			r.Post("/apps/{id}/deploy", s.handleDeployApp)
@@ -156,6 +157,8 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps/{id}/logs", s.handleAppLogs)
 			r.Get("/apps/{id}/deployments", s.handleListDeployments)
 			r.Put("/apps/{id}/public", s.handleSetAppPublic)
+			r.Get("/apps/{id}/dockerfile", s.handleGetAppDockerfile)
+			r.Put("/apps/{id}/dockerfile", s.handleSetAppDockerfile)
 
 			r.Get("/remote", s.handleGetRemote)
 			r.Put("/remote", s.handleSetRemote)
