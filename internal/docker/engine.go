@@ -34,6 +34,13 @@ type AppSpec struct {
 	MemoryMB      int
 }
 
+// Terminal is an interactive shell session (a TTY) inside a container.
+type Terminal interface {
+	io.ReadWriteCloser
+	// Resize changes the TTY size.
+	Resize(ctx context.Context, cols, rows uint) error
+}
+
 // Engine is the subset of container operations lpsd needs.
 // It is an interface so the API can be tested without a Docker daemon.
 type Engine interface {
@@ -56,6 +63,8 @@ type Engine interface {
 	RemoveVolume(ctx context.Context, name string) error
 	// State returns StateRunning, StateStopped or StateMissing.
 	State(ctx context.Context, id string) (string, error)
+	// OpenTerminal starts a login shell as user inside a running container.
+	OpenTerminal(ctx context.Context, containerID, user string, cols, rows uint) (Terminal, error)
 	// Logs returns the last tail lines of combined stdout/stderr.
 	Logs(ctx context.Context, id string, tail int) (string, error)
 }
