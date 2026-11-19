@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, displayHost } from "../api";
 import { Button, Card, CopyField, ErrorBox, LogView, StateBadge, formatLimits } from "../components/ui";
 
@@ -67,13 +67,27 @@ export function VPSDetail() {
             </p>
           )}
           {v.provisionLog && <LogView text={v.provisionLog} />}
+          {v.remoteSsh && (
+            <div>
+              <div className="mb-1 text-sm font-medium">Connect from anywhere (Tailscale)</div>
+              <CopyField value={v.remoteSsh} />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Works from any of your devices signed in to Tailscale.
+              </p>
+            </div>
+          )}
           <div>
-            <div className="mb-1 text-sm font-medium">Connect with SSH</div>
+            <div className="mb-1 text-sm font-medium">{v.remoteSsh ? "Connect on this PC" : "Connect with SSH"}</div>
             <CopyField value={sshCmd} />
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Published on {system.data?.bindIp ?? "127.0.0.1"}:{v.sshPort}. Remote access through a tunnel arrives in a
-              later release; for now use this PC, or start lpsd with <code>-bind-ip 0.0.0.0</code> to reach it from your LAN.
-            </p>
+            {!v.remoteSsh && (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Published on {system.data?.bindIp ?? "127.0.0.1"}:{v.sshPort}. To connect when you are away, turn on{" "}
+                <Link to="/remote" className="text-indigo-600 underline dark:text-indigo-400">
+                  remote access
+                </Link>
+                .
+              </p>
+            )}
           </div>
           <dl className="grid gap-3 text-sm sm:grid-cols-3">
             <div>

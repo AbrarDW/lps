@@ -19,6 +19,7 @@ import (
 	"github.com/abrardw/lps/internal/auth"
 	"github.com/abrardw/lps/internal/docker"
 	"github.com/abrardw/lps/internal/store"
+	"github.com/abrardw/lps/internal/tunnel"
 )
 
 // Config tunes the server.
@@ -32,6 +33,9 @@ type Config struct {
 	SecureCookies bool
 	SessionTTL    time.Duration
 	Version       string
+	// DashboardPort is the local port lpsd listens on; remote access
+	// publishes it on the tailnet. 0 disables publishing the dashboard.
+	DashboardPort int
 }
 
 // DefaultConfig returns sensible defaults.
@@ -53,6 +57,10 @@ type Server struct {
 	limiter *auth.Limiter
 	ui      fs.FS
 	log     *slog.Logger
+	tunnel  tunnel.Provider // nil = remote access unavailable
+
+	remote     remoteState
+	remoteKick chan struct{}
 
 	ctx    context.Context // cancelled on shutdown; parent of background jobs
 	cancel context.CancelFunc
@@ -80,22 +88,29 @@ func (b *syncBuffer) tail(n int) string {
 	return s
 }
 
-// New creates a Server. ui may be nil when the frontend has not been built.
-func New(cfg Config, st *store.Store, eng docker.Engine, ui fs.FS, logger *slog.Logger) *Server {
+// New creates a Server. ui may be nil when the frontend has not been built;
+// tp may be nil to disable remote access.
+func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui fs.FS, logger *slog.Logger) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{
-		cfg: cfg, store: st, engine: eng, ui: ui, log: logger,
-		limiter:   auth.NewLimiter(5, 15*time.Minute),
-		ctx:       ctx,
-		cancel:    cancel,
-		portsHeld: map[int]bool{},
-		vpsTasks:  map[int64]*taskInfo{},
-		deploying: map[int64]bool{},
-		liveLogs:  map[int64]*syncBuffer{},
+	s := &Server{
+		cfg: cfg, store: st, engine: eng, ui: ui, log: logger, tunnel: tp,
+		remoteKick: make(chan struct{}, 1),
+		limiter:    auth.NewLimiter(5, 15*time.Minute),
+		ctx:        ctx,
+		cancel:     cancel,
+		portsHeld:  map[int]bool{},
+		vpsTasks:   map[int64]*taskInfo{},
+		deploying:  map[int64]bool{},
+		liveLogs:   map[int64]*syncBuffer{},
 	}
+	if tp != nil {
+		s.wg.Add(1)
+		go s.remoteLoop()
+	}
+	return s
 }
 
 // Shutdown cancels background jobs and waits for them to finish.
@@ -107,7 +122,7 @@ func (s *Server) Shutdown() {
 // Handler returns the root HTTP handler.
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
-	// No RealIP middleware: trusting X-Forwarded-For would let clients dodge the login limiter.
+	// No RealIP middleware: clientIP trusts X-Forwarded-For only from loopback.
 	r.Use(middleware.Recoverer, securityHeaders)
 
 	r.Route("/api", func(r chi.Router) {
@@ -140,6 +155,11 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/apps/{id}/stop", s.handleAppAction("stop"))
 			r.Get("/apps/{id}/logs", s.handleAppLogs)
 			r.Get("/apps/{id}/deployments", s.handleListDeployments)
+			r.Put("/apps/{id}/public", s.handleSetAppPublic)
+
+			r.Get("/remote", s.handleGetRemote)
+			r.Put("/remote", s.handleSetRemote)
+			r.Post("/remote/sync", s.handleSyncRemote)
 		})
 		r.NotFound(func(w http.ResponseWriter, r *http.Request) { writeError(w, 404, "not found") })
 	})
@@ -271,12 +291,41 @@ func storeError(s *Server, w http.ResponseWriter, err error, what string) {
 	}
 }
 
+// viaLocalProxy reports whether the request came from a reverse proxy on this
+// machine (e.g. `tailscale serve`), the only case where forwarding headers are
+// trusted. lpsd listens on localhost, so remote clients cannot forge this.
+func viaLocalProxy(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback() && r.Header.Get("X-Forwarded-For") != ""
+}
+
+// clientIP identifies the client for login rate limiting. Behind a local proxy
+// every request comes from 127.0.0.1, so use the forwarded address instead;
+// otherwise one device's failed logins would lock out all the others.
 func clientIP(r *http.Request) string {
+	if viaLocalProxy(r) {
+		fwd := r.Header.Get("X-Forwarded-For")
+		if i := strings.LastIndex(fwd, ","); i >= 0 {
+			fwd = fwd[i+1:] // the hop added by the local proxy
+		}
+		if ip := net.ParseIP(strings.TrimSpace(fwd)); ip != nil {
+			return ip.String()
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// isHTTPS reports whether the browser is talking HTTPS, directly or through a local proxy.
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || (viaLocalProxy(r) && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https"))
 }
 
 // syncBuffer is a goroutine-safe log buffer for live build output.

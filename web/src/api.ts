@@ -17,6 +17,7 @@ export interface VPS {
   state: State;
   error?: string;
   provisionLog?: string;
+  remoteSsh?: string;
 }
 
 export interface Deployment {
@@ -43,6 +44,46 @@ export interface AppItem {
   error?: string;
   deploying: boolean;
   lastDeploy?: Deployment;
+  publicPort: number;
+  remoteUrl?: string;
+  publicUrl?: string;
+}
+
+export interface NeedsAction { message: string; url?: string }
+
+export interface TunnelStatus {
+  installed: boolean;
+  running: boolean;
+  state: string;
+  dnsName: string;
+  hostName: string;
+  tailnet: string;
+  httpsEnabled: boolean;
+  funnelEnabled: boolean;
+  funnelPorts: number[] | null;
+}
+
+export interface ExposureView {
+  proto: "https" | "tcp";
+  port: number;
+  localPort: number;
+  public: boolean;
+  label: string;
+  url: string;
+  state: "active" | "pending" | "error";
+  error?: string;
+}
+
+export interface RemoteView {
+  provider: string;
+  available: boolean;
+  enabled: boolean;
+  status: TunnelStatus;
+  dashboardUrl?: string;
+  needsAction?: NeedsAction;
+  error?: string;
+  lastSync?: string;
+  exposures: ExposureView[];
 }
 
 export interface SystemInfo {
@@ -54,7 +95,7 @@ export interface SystemInfo {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public needsAction?: NeedsAction) {
     super(message);
   }
 }
@@ -71,7 +112,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText);
+  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText, data.needsAction);
   return data as T;
 }
 
@@ -101,6 +142,11 @@ export const api = {
   deleteApp: (id: number) => request<void>("DELETE", `/apps/${id}`),
   appLogs: (id: number) => request<{ logs: string }>("GET", `/apps/${id}/logs?tail=300`),
   deployments: (id: number) => request<Deployment[]>("GET", `/apps/${id}/deployments`),
+  setAppPublic: (id: number, isPublic: boolean) => request<AppItem>("PUT", `/apps/${id}/public`, { public: isPublic }),
+
+  remote: () => request<RemoteView>("GET", "/remote"),
+  setRemote: (enabled: boolean) => request<RemoteView>("PUT", "/remote", { enabled }),
+  syncRemote: () => request<RemoteView>("POST", "/remote/sync"),
 };
 
 /** Host to show in SSH commands / URLs: the dashboard's host when ports are published beyond localhost. */

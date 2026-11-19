@@ -90,14 +90,15 @@ type App struct {
 	CPUs          float64   `json:"cpus"`
 	MemoryMB      int       `json:"memoryMb"`
 	ContainerID   string    `json:"containerId"`
+	PublicPort    int       `json:"publicPort"` // Funnel port; 0 = no public link
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
-const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, created_at`
+const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, public_port, created_at`
 
 func scanApp(r scanner) (*App, error) {
 	a := &App{}
-	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.CreatedAt)
+	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.PublicPort, &a.CreatedAt)
 	return a, err
 }
 

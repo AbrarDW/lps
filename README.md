@@ -2,7 +2,7 @@
 
 Turn your home PC into your own VPS host. LPS runs **Linux VPSes** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
 
-> Status: **early development (milestone 1)**. Linux VPSes and Dockerfile app deploys work locally. A reverse proxy with hostnames, remote access and the one-click installer are next. See the [roadmap](#roadmap).
+> Status: **early development**. Linux VPSes, Dockerfile app deploys and [remote access with Tailscale](#remote-access-with-tailscale) work. A reverse proxy with hostnames and the one-click installer are next. See the [roadmap](#roadmap).
 
 ![LPS dashboard](docs/images/dashboard.png)
 
@@ -96,6 +96,60 @@ When you delete a VPS you can keep its `/home` volume; creating a VPS with the s
 
 A VPS here is a container, not a full VM. It shares the host's Linux kernel (WSL2's kernel on Windows). `systemd` is not running, so start services with their own commands or a process manager like `supervisord`/`pm2`. Running Docker inside a VPS is not supported yet. CPU limits are quotas: `nproc` still shows every host core.
 
+## Remote access with Tailscale
+
+Reach the dashboard, SSH into your VPSes and open your apps from your phone or laptop, from anywhere. No domain, no router changes, and nothing is exposed to the internet unless you turn on a public link for an app.
+
+```mermaid
+flowchart LR
+    subgraph devices["Your devices (Tailscale app, same account)"]
+        phone(["Phone"])
+        laptop(["Laptop"])
+    end
+    world(["Anyone on the internet"])
+
+    subgraph pc["Home PC"]
+        ts["Tailscale app<br/>tailscale serve / funnel"]
+        lpsd["lpsd :7070"]
+        vps["VPS SSH :2201"]
+        app["App :8100"]
+    end
+
+    phone -- "https://home-pc.tailnet.ts.net" --> ts
+    laptop -- "ssh dev@home-pc.tailnet.ts.net -p 2201" --> ts
+    world -. "public link (optional)<br/>https://home-pc.tailnet.ts.net:8443" .-> ts
+    ts --> lpsd
+    ts --> vps
+    ts --> app
+```
+
+**Set up (about 5 minutes):**
+
+1. Install the [Tailscale app](https://tailscale.com/download) on the home PC and sign in.
+2. In the Tailscale admin console, open [DNS](https://login.tailscale.com/admin/dns) and enable **HTTPS Certificates**.
+3. In LPS, open **Remote access** and turn it on. LPS publishes the dashboard, every VPS's SSH port and every app on your tailnet, and keeps that in sync as you add or delete things.
+4. Install Tailscale on your phone or laptop, sign in with the same account, and open the dashboard address LPS shows (like `https://home-pc.your-tailnet.ts.net`).
+
+| Remote access page | App with a public link | Phone |
+|---|---|---|
+| ![Remote access page](docs/images/remote.png) | ![App with private and public links](docs/images/remote-app.png) | ![Remote access on a phone](docs/images/remote-mobile.png) |
+
+**What gets published:**
+
+| What | Address on your tailnet | Who can reach it |
+|---|---|---|
+| Dashboard | `https://<pc>.<tailnet>.ts.net` | Your Tailscale devices (and you still log in to LPS) |
+| VPS SSH | `ssh <user>@<pc>.<tailnet>.ts.net -p 22xx` | Your Tailscale devices |
+| Apps | `https://<pc>.<tailnet>.ts.net:81xx` | Your Tailscale devices |
+| App public link (opt-in) | `https://<pc>.<tailnet>.ts.net:8443` or `:10000` | **Anyone** with the link (Tailscale Funnel) |
+
+**Good to know:**
+
+- Public links use [Tailscale Funnel](https://tailscale.com/kb/1223/funnel), which allows only a few ports per machine, so **at most 2 apps can be public at once**. Funnel must be allowed for your tailnet; LPS links to the instructions if it isn't. The dashboard and SSH are never made public.
+- LPS only adds and removes the `tailscale serve`/`funnel` settings it created itself. If a port is already used by your own Tailscale settings, LPS leaves it alone and shows a warning.
+- Everything still listens on `127.0.0.1`; Tailscale forwards to it, so nothing is opened on your LAN or router.
+- Start lpsd with `-no-remote` to turn the integration off completely.
+
 ## Screenshots
 
 | Create a VPS | VPS details |
@@ -187,10 +241,11 @@ Open <http://127.0.0.1:7070>, create the admin account, then:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `-addr` | `127.0.0.1:7070` | Dashboard address. Keep it on localhost and expose it through a tunnel (coming soon). |
+| `-addr` | `127.0.0.1:7070` | Dashboard address. Keep it on localhost; use [remote access](#remote-access-with-tailscale) to reach it from elsewhere. |
 | `-data` | `%ProgramData%\LPS` · `~/.local/share/lps` · `~/Library/Application Support/LPS` | Database and state. |
 | `-bind-ip` | `127.0.0.1` | Where VPS SSH ports (2201–2299) and app ports (8100–8199) are published. Use `0.0.0.0` to reach them from your LAN. |
-| `-secure-cookies` | `false` | Set this when the dashboard is served over HTTPS. |
+| `-secure-cookies` | `false` | Always mark cookies Secure. Not needed for Tailscale: LPS detects HTTPS through it automatically. |
+| `-no-remote` | `false` | Disable the Tailscale remote-access integration. |
 
 ### Ports at a glance
 
@@ -215,13 +270,14 @@ flowchart TB
     api --> auth["internal/auth<br/>bcrypt, sessions, rate limit"]
     api --> dock["internal/docker<br/>Engine interface + Docker client"]
     api --> build["internal/builder<br/>build context, .dockerignore"]
+    api --> tun["internal/tunnel<br/>Provider interface + Tailscale CLI driver"]
     dock --> img["images/ubuntu-vps<br/>embedded VPS image"]
     main --> web["web/ (React)<br/>embedded dashboard"]
 ```
 
 - Frontend: `web/` (React, Vite, TypeScript, TanStack Query, Tailwind). For hot reload, run `npm run dev` in `web/` while `lpsd serve` is running; Vite proxies `/api` to it.
 - Database: SQLite through the pure-Go `modernc.org/sqlite` driver, so there's no CGO and cross-compiling to Windows is easy. Migrations live in `internal/store/migrations` and are applied on start. The SQL is kept portable so PostgreSQL can be added as an option later.
-- `internal/docker.Engine` is an interface; API tests use an in-memory fake, so `go test ./...` needs no Docker.
+- `internal/docker.Engine` and `internal/tunnel.Provider` are interfaces; API tests use in-memory fakes, so `go test ./...` needs neither Docker nor Tailscale.
 
 ## Roadmap
 
@@ -229,7 +285,7 @@ flowchart TB
 flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Routing<br/>Caddy proxy,<br/>hostname per app,<br/>env vars, auto-detect builds"]
-    m3["3. Remote access<br/>Tailscale →<br/>Cloudflare Quick Tunnel →<br/>Cloudflare Tunnel (own domain)"]
+    m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel →<br/>Cloudflare Tunnel (own domain)"]
     m4["4. VPS feel<br/>browser terminal,<br/>git-URL deploys,<br/>stats"]
     m5["5. Packaging<br/>Windows service,<br/>installer GUI,<br/>Linux + macOS"]
     m1 --> m2 --> m3 --> m4 --> m5
@@ -237,7 +293,7 @@ flowchart LR
 
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Routing:** a Caddy reverse proxy with a hostname per app and per VPS HTTP port, env vars, and auto-detected builds (Node, Python, static) without a Dockerfile.
-3. **Remote access (pluggable):** Tailscale first (no domain needed, private access to the dashboard, SSH and apps; Funnel for a public link), then Cloudflare Quick Tunnel (instant public demo links), then Cloudflare Tunnel with your own domain. Optional 2FA (TOTP) before anything is exposed.
+3. **Remote access (pluggable):** ✅ Tailscale (no domain needed, private access to the dashboard, SSH and apps; Funnel for public links). Next: Cloudflare Quick Tunnel (instant public demo links), then Cloudflare Tunnel with your own domain. Optional 2FA (TOTP) before anything is exposed.
 4. **VPS feel:** a browser terminal, git-URL deploys and webhooks, and resource stats.
 5. **Packaging:** run as a Windows service, plus a **one-click/step-by-step installer GUI** (checks WSL2 and Docker, creates the admin, sets up remote access). Then Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 

@@ -21,6 +21,9 @@ type appView struct {
 	Error      string            `json:"error,omitempty"`
 	Deploying  bool              `json:"deploying"`
 	LastDeploy *store.Deployment `json:"lastDeploy,omitempty"`
+	// Remote URLs, set when remote access is active for this app.
+	RemoteURL string `json:"remoteUrl,omitempty"`
+	PublicURL string `json:"publicUrl,omitempty"`
 }
 
 type createAppReq struct {
@@ -50,6 +53,14 @@ func (req *createAppReq) validate() error {
 
 func (s *Server) appView(r *http.Request, a *store.App) appView {
 	view := appView{App: a}
+	if dns, active := s.remoteSnapshot(r.Context()); dns != "" {
+		if e, ok := active[a.HostPort]; ok {
+			view.RemoteURL = remoteURL(dns, toExposure(e))
+		}
+		if e, ok := active[a.PublicPort]; ok && a.PublicPort > 0 && e.Public {
+			view.PublicURL = remoteURL(dns, toExposure(e))
+		}
+	}
 	s.mu.Lock()
 	view.Deploying = s.deploying[a.ID]
 	s.mu.Unlock()
@@ -107,6 +118,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.kickRemote()
 	writeJSON(w, http.StatusAccepted, s.appView(r, a))
 }
 
@@ -154,9 +166,13 @@ func (s *Server) startDeploy(a *store.App) (*store.Deployment, error) {
 	s.liveLogs[d.ID] = buf
 	s.mu.Unlock()
 
+	// The goroutine gets its own copy: the caller keeps using a (e.g. to
+	// encode the HTTP response) while the deploy updates ContainerID.
+	app := *a
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		a := &app
 		image, err := s.runDeploy(a, d, buf)
 		status := store.DeployRunning
 		if err != nil {
@@ -276,6 +292,7 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.kickRemote()
 	w.WriteHeader(http.StatusNoContent)
 }
 

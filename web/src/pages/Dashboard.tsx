@@ -9,6 +9,7 @@ export function Dashboard() {
   const system = useQuery({ queryKey: ["system"], queryFn: api.system, refetchInterval: 15000 });
   const vps = useQuery({ queryKey: ["vps"], queryFn: api.listVPS, refetchInterval: 5000 });
   const apps = useQuery({ queryKey: ["apps"], queryFn: api.listApps, refetchInterval: 5000 });
+  const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote, refetchInterval: 15000 });
   const docker = system.data?.docker;
 
   return (
@@ -18,6 +19,33 @@ export function Dashboard() {
           <p className="font-semibold">Docker is not reachable</p>
           <p className="mt-1">{docker.hint}</p>
           <p className="mt-1 font-mono text-xs opacity-75">{docker.error}</p>
+        </div>
+      )}
+
+      {remote.data?.available && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900">
+          <span>
+            <span className="font-medium">Remote access: </span>
+            {remote.data.enabled ? (
+              <>
+                on
+                {remote.data.dashboardUrl && (
+                  <>
+                    {" · "}
+                    <a className="text-indigo-600 hover:underline dark:text-indigo-400" href={remote.data.dashboardUrl}>
+                      {remote.data.dashboardUrl.replace("https://", "")}
+                    </a>
+                  </>
+                )}
+                {remote.data.needsAction && <span className="text-amber-700 dark:text-amber-300"> · needs attention</span>}
+              </>
+            ) : (
+              "off"
+            )}
+          </span>
+          <Link to="/remote" className="text-indigo-600 hover:underline dark:text-indigo-400">
+            {remote.data.enabled ? "Manage" : "Set up"}
+          </Link>
         </div>
       )}
 

@@ -104,3 +104,32 @@ func TestFailStaleDeployments(t *testing.T) {
 		t.Fatalf("status = %s", ds[0].Status)
 	}
 }
+
+func TestRemoteSettingsAndExposures(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	if v, _ := s.GetSetting(ctx, SettingRemoteEnabled, "false"); v != "false" {
+		t.Fatalf("default = %q", v)
+	}
+	s.SetSetting(ctx, SettingRemoteEnabled, "true")
+	s.SetSetting(ctx, SettingRemoteEnabled, "true")
+	if v, _ := s.GetSetting(ctx, SettingRemoteEnabled, "false"); v != "true" {
+		t.Fatalf("after set = %q", v)
+	}
+	s.SaveExposure(ctx, AppliedExposure{Proto: "https", Port: 443, LocalPort: 7070})
+	s.SaveExposure(ctx, AppliedExposure{Proto: "https", Port: 443, LocalPort: 7071, Public: false})
+	s.SaveExposure(ctx, AppliedExposure{Proto: "tcp", Port: 2201, LocalPort: 2201})
+	es, _ := s.ListExposures(ctx)
+	if len(es) != 2 || es[0].LocalPort != 7071 {
+		t.Fatalf("exposures = %+v", es)
+	}
+	s.DeleteExposure(ctx, "tcp", 2201)
+	if es, _ := s.ListExposures(ctx); len(es) != 1 {
+		t.Fatalf("after delete = %+v", es)
+	}
+	a := &App{Name: "web", SourcePath: "/src", ContainerPort: 80, HostPort: 8100}
+	s.CreateApp(ctx, a)
+	s.SetAppPublicPort(ctx, a.ID, 8443)
+	if got, _ := s.GetApp(ctx, a.ID); got.PublicPort != 8443 {
+		t.Fatalf("public port = %d", got.PublicPort)
+	}
+}

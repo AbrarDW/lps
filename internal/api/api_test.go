@@ -18,6 +18,7 @@ import (
 
 	"github.com/abrardw/lps/internal/docker"
 	"github.com/abrardw/lps/internal/store"
+	"github.com/abrardw/lps/internal/tunnel"
 )
 
 // fakeEngine is an in-memory docker.Engine.
@@ -103,7 +104,9 @@ type harness struct {
 	srv *Server
 }
 
-func setup(t *testing.T) *harness {
+func setup(t *testing.T) *harness { return setupWith(t, nil) }
+
+func setupWith(t *testing.T, tp tunnel.Provider) *harness {
 	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
@@ -112,7 +115,8 @@ func setup(t *testing.T) *harness {
 	eng := newFake()
 	cfg := DefaultConfig()
 	ui := fstest.MapFS{"index.html": {Data: []byte("<html>lps</html>")}}
-	srv := New(cfg, st, eng, ui, nil)
+	cfg.DashboardPort = 7070
+	srv := New(cfg, st, eng, tp, ui, nil)
 	ts := httptest.NewServer(srv.Handler())
 	jar, _ := cookiejar.New(nil)
 	t.Cleanup(func() { ts.Close(); srv.Shutdown(); st.Close() })

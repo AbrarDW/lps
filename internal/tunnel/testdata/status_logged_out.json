@@ -1,0 +1,17 @@
+{
+  "Version": "1.104.7",
+  "BackendState": "NeedsLogin",
+  "AuthURL": "",
+  "TailscaleIPs": null,
+  "Self": {
+    "ID": "",
+    "HostName": "HOME-PC",
+    "DNSName": "",
+    "OS": "windows",
+    "TailscaleIPs": null,
+    "Online": false
+  },
+  "Health": ["You are logged out."],
+  "MagicDNSSuffix": "",
+  "CurrentTailnet": null
+}

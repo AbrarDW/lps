@@ -1,0 +1,19 @@
+{
+  "Version": "1.104.7",
+  "BackendState": "Running",
+  "TailscaleIPs": ["100.101.102.103", "fd7a:115c:a1e0::1"],
+  "Self": {
+    "ID": "nABC123",
+    "HostName": "HOME-PC",
+    "DNSName": "home-pc.tail1234.ts.net.",
+    "OS": "windows",
+    "TailscaleIPs": ["100.101.102.103"],
+    "Online": true,
+    "CapMap": {
+      "https://tailscale.com/cap/is-admin": null,
+      "ssh-behavior-v1": null
+    }
+  },
+  "MagicDNSSuffix": "tail1234.ts.net",
+  "CurrentTailnet": {"Name": "you@example.com", "MagicDNSSuffix": "tail1234.ts.net", "MagicDNSEnabled": true}
+}

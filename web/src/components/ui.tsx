@@ -55,6 +55,8 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 
 const stateStyle: Record<string, string> = {
   running: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300",
+  active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300",
+  pending: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300",
   stopped: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
   missing: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   provisioning: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300",
@@ -114,4 +116,45 @@ export function formatLimits(cpus: number, memoryMb: number) {
   const c = cpus > 0 ? `${cpus} CPU` : "unlimited CPU";
   const m = memoryMb > 0 ? (memoryMb >= 1024 ? `${(memoryMb / 1024).toFixed(1)} GB` : `${memoryMb} MB`) : "unlimited RAM";
   return `${c} · ${m}`;
+}
+
+export function Switch({
+  checked,
+  onChange,
+  disabled,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+      }`}
+    >
+      <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
+    </button>
+  );
+}
+
+export function ActionBox({ message, url, linkText = "Open" }: { message: string; url?: string; linkText?: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+      <span>{message}</span>
+      {url && (
+        <a href={url} target="_blank" rel="noreferrer" className="font-medium underline">
+          {linkText} ↗
+        </a>
+      )}
+    </div>
+  );
 }

@@ -8,10 +8,12 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/abrardw/lps/internal/docker"
 	"github.com/abrardw/lps/internal/platform"
 	"github.com/abrardw/lps/internal/store"
+	"github.com/abrardw/lps/internal/tunnel"
 	"github.com/abrardw/lps/web"
 )
 
@@ -63,6 +66,7 @@ func serve(args []string) error {
 	dataDir := fs.String("data", platform.DefaultDataDir(), "directory for the database and state")
 	bindIP := fs.String("bind-ip", "127.0.0.1", "host IP that VPS SSH and app ports are published on (0.0.0.0 = whole LAN)")
 	secure := fs.Bool("secure-cookies", false, "mark session cookies Secure (set when the dashboard is reached over HTTPS)")
+	noRemote := fs.Bool("no-remote", false, "disable remote access (Tailscale) integration")
 	fs.Parse(args)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -97,7 +101,14 @@ func serve(args []string) error {
 	cfg.BindIP = *bindIP
 	cfg.SecureCookies = *secure
 	cfg.Version = version
-	srv := api.New(cfg, st, eng, web.Dist(), logger)
+	if _, p, err := net.SplitHostPort(*addr); err == nil {
+		cfg.DashboardPort, _ = strconv.Atoi(p)
+	}
+	var tp tunnel.Provider
+	if !*noRemote {
+		tp = tunnel.NewTailscale()
+	}
+	srv := api.New(cfg, st, eng, tp, web.Dist(), logger)
 
 	httpSrv := &http.Server{
 		Addr:              *addr,
