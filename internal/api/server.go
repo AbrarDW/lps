@@ -64,6 +64,8 @@ type Server struct {
 
 	remote     remoteState
 	remoteKick chan struct{}
+	// vpsAppsKick asks vpsAppsLoop to restart stopped VPS apps now.
+	vpsAppsKick chan struct{}
 
 	ctx    context.Context // cancelled on shutdown; parent of background jobs
 	cancel context.CancelFunc
@@ -100,19 +102,22 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 	}
 	s := &Server{
 		cfg: cfg, store: st, engine: eng, ui: ui, log: logger, tunnel: tp, hooks: defaultHooks(cfg.DataDir),
-		remoteKick: make(chan struct{}, 1),
-		limiter:    auth.NewLimiter(5, 15*time.Minute),
-		ctx:        ctx,
-		cancel:     cancel,
-		portsHeld:  map[int]bool{},
-		vpsTasks:   map[int64]*taskInfo{},
-		deploying:  map[int64]bool{},
-		liveLogs:   map[int64]*syncBuffer{},
+		remoteKick:  make(chan struct{}, 1),
+		vpsAppsKick: make(chan struct{}, 1),
+		limiter:     auth.NewLimiter(5, 15*time.Minute),
+		ctx:         ctx,
+		cancel:      cancel,
+		portsHeld:   map[int]bool{},
+		vpsTasks:    map[int64]*taskInfo{},
+		deploying:   map[int64]bool{},
+		liveLogs:    map[int64]*syncBuffer{},
 	}
 	if tp != nil {
 		s.wg.Add(1)
 		go s.remoteLoop()
 	}
+	s.wg.Add(1)
+	go s.vpsAppsLoop()
 	return s
 }
 
@@ -161,6 +166,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps", s.handleListApps)
 			r.Post("/apps", s.handleCreateApp)
 			r.Post("/apps/detect", s.handleDetectApp)
+			r.Get("/apps/templates", s.handleAppTemplates)
 			r.Get("/apps/{id}", s.handleGetApp)
 			r.Delete("/apps/{id}", s.handleDeleteApp)
 			r.Post("/apps/{id}/deploy", s.handleDeployApp)
@@ -171,6 +177,7 @@ func (s *Server) Handler() http.Handler {
 			r.Put("/apps/{id}/public", s.handleSetAppPublic)
 			r.Get("/apps/{id}/dockerfile", s.handleGetAppDockerfile)
 			r.Put("/apps/{id}/dockerfile", s.handleSetAppDockerfile)
+			r.Put("/apps/{id}/run-config", s.handleSetAppRunConfig)
 
 			r.Get("/remote", s.handleGetRemote)
 			r.Put("/remote", s.handleSetRemote)

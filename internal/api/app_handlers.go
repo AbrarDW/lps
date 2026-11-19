@@ -27,8 +27,11 @@ type appView struct {
 	// Remote URLs, set when remote access is active for this app.
 	RemoteURL string `json:"remoteUrl,omitempty"`
 	PublicURL string `json:"publicUrl,omitempty"`
-	// DockerfileSource is "lps" when LPS's stored Dockerfile is used, else "project".
+	// DockerfileSource is "lps" when LPS's stored Dockerfile is used, "project"
+	// for the project's own, and "none" for apps that run inside a VPS.
 	DockerfileSource string `json:"dockerfileSource"`
+	// VPSName is the VPS the app runs in, if any.
+	VPSName string `json:"vpsName,omitempty"`
 }
 
 // maxDockerfile caps a stored Dockerfile (requests are limited to 64 KiB).
@@ -44,6 +47,14 @@ type createAppReq struct {
 	Dockerfile string `json:"dockerfile"`
 	// SaveToProject writes Dockerfile into the project folder instead of storing it in LPS.
 	SaveToProject bool `json:"saveToProject"`
+
+	// VPSID runs the app inside that VPS instead of its own container.
+	VPSID      int64  `json:"vpsId"`
+	SourceKind string `json:"sourceKind"` // "pc" (copy SourcePath) or "vps" (use VPSPath)
+	VPSPath    string `json:"vpsPath"`
+	Packages   string `json:"packages"`
+	InstallCmd string `json:"installCmd"`
+	StartCmd   string `json:"startCmd"`
 }
 
 func cleanSourcePath(p string) (string, error) {
@@ -68,6 +79,10 @@ func (req *createAppReq) validate() error {
 	if !nameRe.MatchString(req.Name) {
 		return errors.New("name must be 2-31 chars: lowercase letters, digits and '-'")
 	}
+	if req.VPSID > 0 {
+		return req.validateVPS()
+	}
+	req.SourceKind, req.VPSPath, req.Packages, req.InstallCmd, req.StartCmd = store.SourcePC, "", "", "", ""
 	var err error
 	if req.SourcePath, err = cleanSourcePath(req.SourcePath); err != nil {
 		return err
@@ -91,6 +106,12 @@ func (s *Server) appView(r *http.Request, a *store.App) appView {
 	if a.Dockerfile != "" {
 		view.DockerfileSource = "lps"
 	}
+	if a.InVPS() {
+		view.DockerfileSource = "none"
+		if v, err := s.store.GetVPS(r.Context(), a.VPSID); err == nil {
+			view.VPSName = v.Name
+		}
+	}
 	if dns, active := s.remoteSnapshot(r.Context()); dns != "" {
 		if e, ok := active[a.HostPort]; ok {
 			view.RemoteURL = remoteURL(dns, toExposure(e))
@@ -107,7 +128,13 @@ func (s *Server) appView(r *http.Request, a *store.App) appView {
 		d.Log = "" // full logs via /deployments
 		view.LastDeploy = d
 	}
-	st, err := s.engine.State(r.Context(), a.ContainerID)
+	var st string
+	var err error
+	if a.InVPS() {
+		st, err = s.vpsAppState(r.Context(), a)
+	} else {
+		st, err = s.engine.State(r.Context(), a.ContainerID)
+	}
 	if err != nil {
 		view.State, view.Error = stateError, err.Error()
 	} else {
@@ -138,6 +165,16 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
+	if req.VPSID > 0 {
+		if _, err := s.store.GetVPS(r.Context(), req.VPSID); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeError(w, 400, "that VPS does not exist")
+			} else {
+				s.internalError(w, err)
+			}
+			return
+		}
+	}
 	if req.SaveToProject && req.Dockerfile != "" {
 		if err := writeProjectDockerfile(req.SourcePath, req.Dockerfile); err != nil {
 			writeError(w, http.StatusConflict, err.Error())
@@ -154,6 +191,8 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	a := &store.App{
 		Name: req.Name, SourcePath: req.SourcePath, ContainerPort: req.ContainerPort,
 		HostPort: port, CPUs: req.CPUs, MemoryMB: req.MemoryMB, Dockerfile: req.Dockerfile,
+		VPSID: req.VPSID, SourceKind: req.SourceKind, VPSPath: req.VPSPath,
+		Packages: req.Packages, InstallCmd: req.InstallCmd, StartCmd: req.StartCmd,
 	}
 	if err := s.store.CreateApp(r.Context(), a); err != nil {
 		storeError(s, w, err, "app")
@@ -238,6 +277,9 @@ func (s *Server) startDeploy(a *store.App) (*store.Deployment, error) {
 }
 
 func (s *Server) runDeploy(a *store.App, d *store.Deployment, log io.Writer) (string, error) {
+	if a.InVPS() {
+		return s.runVPSDeploy(a, log)
+	}
 	ctx := s.ctx
 	if err := builder.ValidateDir(a.SourcePath); err != nil {
 		return "", err
@@ -314,7 +356,9 @@ func (s *Server) handleAppAction(action string) http.HandlerFunc {
 			return
 		}
 		var err error
-		if action == "start" {
+		if a.InVPS() {
+			err = s.vpsAppAction(r.Context(), a, action)
+		} else if action == "start" {
 			err = s.engine.Start(r.Context(), a.ContainerID)
 		} else {
 			err = s.engine.Stop(r.Context(), a.ContainerID)
@@ -339,11 +383,18 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, errDeployInProgress.Error())
 		return
 	}
-	if err := s.engine.Remove(r.Context(), a.ContainerID); err != nil {
-		writeError(w, http.StatusBadGateway, "remove container: "+err.Error())
-		return
+	if a.InVPS() {
+		if err := s.removeVPSApp(r.Context(), a); err != nil {
+			writeError(w, http.StatusBadGateway, "remove relay: "+err.Error())
+			return
+		}
+	} else {
+		if err := s.engine.Remove(r.Context(), a.ContainerID); err != nil {
+			writeError(w, http.StatusBadGateway, "remove container: "+err.Error())
+			return
+		}
+		_ = s.engine.Remove(r.Context(), docker.AppContainerName(a.Name))
 	}
-	_ = s.engine.Remove(r.Context(), docker.AppContainerName(a.Name))
 	if err := s.store.DeleteApp(r.Context(), a.ID); err != nil {
 		s.internalError(w, err)
 		return
@@ -353,9 +404,20 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAppLogs(w http.ResponseWriter, r *http.Request) {
-	if a, ok := s.loadApp(w, r); ok {
-		s.writeLogs(w, r, a.ContainerID)
+	a, ok := s.loadApp(w, r)
+	if !ok {
+		return
 	}
+	if !a.InVPS() {
+		s.writeLogs(w, r, a.ContainerID)
+		return
+	}
+	logs, err := s.vpsAppLogs(r.Context(), a, tailParam(r))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"logs": logs})
 }
 
 func (s *Server) handleListDeployments(w http.ResponseWriter, r *http.Request) {

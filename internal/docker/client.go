@@ -191,16 +191,25 @@ func (c *Client) copyInitEnv(ctx context.Context, id string, spec VPSSpec) error
 	if spec.Password != "" {
 		fmt.Fprintf(&env, "LPS_PASSWORD_B64='%s'\n", b64([]byte(spec.Password)))
 	}
-	data := []byte(env.String())
-	var buf bytes.Buffer
-	tw := tar.NewWriter(&buf)
-	if err := tw.WriteHeader(&tar.Header{Name: "init.env", Mode: 0o600, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
+	buf, err := singleFileTar("init.env", []byte(env.String()), 0o600)
+	if err != nil {
 		return err
 	}
-	tw.Write(data)
-	tw.Close()
-	_, err := c.cli.CopyToContainer(ctx, id, client.CopyToContainerOptions{DestinationPath: "/etc/lps", Content: &buf})
+	_, err = c.cli.CopyToContainer(ctx, id, client.CopyToContainerOptions{DestinationPath: "/etc/lps", Content: buf})
 	return err
+}
+
+// singleFileTar returns a tar archive holding one root-owned file.
+func singleFileTar(name string, data []byte, mode int64) (*bytes.Buffer, error) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
+		return nil, err
+	}
+	if _, err := tw.Write(data); err != nil {
+		return nil, err
+	}
+	return &buf, tw.Close()
 }
 
 // CreateApp implements Engine.

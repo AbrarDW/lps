@@ -18,6 +18,7 @@ export interface VPS {
   error?: string;
   provisionLog?: string;
   remoteSsh?: string;
+  apps: { id: number; name: string; hostPort: number }[];
 }
 
 export interface Deployment {
@@ -48,7 +49,25 @@ export interface AppItem {
   remoteUrl?: string;
   publicUrl?: string;
   dockerfile: string;
-  dockerfileSource: "lps" | "project";
+  dockerfileSource: "lps" | "project" | "none";
+  /** 0 = the app runs in its own container. */
+  vpsId: number;
+  vpsName?: string;
+  sourceKind: "pc" | "vps";
+  vpsPath: string;
+  packages: string;
+  installCmd: string;
+  startCmd: string;
+  wantRunning: boolean;
+}
+
+/** How to install and start an app directly inside a VPS. */
+export interface RunSetup {
+  packages: string;
+  install: string;
+  start: string;
+  port: number;
+  notes: string[] | null;
 }
 
 export interface Detection {
@@ -57,6 +76,7 @@ export interface Detection {
   port: number;
   dockerfile: string;
   notes: string[] | null;
+  run: RunSetup;
 }
 
 export interface DetectResult {
@@ -180,7 +200,16 @@ export const api = {
     memoryMb: number;
     dockerfile?: string;
     saveToProject?: boolean;
+    vpsId?: number;
+    sourceKind?: "pc" | "vps";
+    vpsPath?: string;
+    packages?: string;
+    installCmd?: string;
+    startCmd?: string;
   }) => request<AppItem>("POST", "/apps", a),
+  appTemplates: () => request<Detection[]>("GET", "/apps/templates"),
+  setAppRunConfig: (id: number, c: { packages: string; installCmd: string; startCmd: string }) =>
+    request<AppItem>("PUT", `/apps/${id}/run-config`, c),
   detectApp: (sourcePath: string) => request<DetectResult>("POST", "/apps/detect", { sourcePath }),
   appDockerfile: (id: number) => request<AppDockerfile>("GET", `/apps/${id}/dockerfile`),
   setAppDockerfile: (id: number, dockerfile: string) => request<AppItem>("PUT", `/apps/${id}/dockerfile`, { dockerfile }),

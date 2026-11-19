@@ -14,6 +14,7 @@ import {
   SpecGrid,
   StateBadge,
   Tabs,
+  buttonClass,
   formatLimits,
 } from "../components/ui";
 
@@ -120,6 +121,36 @@ export function VPSDetail() {
             </div>
           </Card>
 
+          <Card
+            title="Apps on this VPS"
+            flush
+            actions={
+              <Link to={`/apps/new?vps=${v.id}`} className={buttonClass("secondary", "sm")}>
+                <Icon name="plus" />
+                Deploy an app here
+              </Link>
+            }
+          >
+            {v.apps.length === 0 ? (
+              <p className="m-0 p-4 text-[13px] text-ink-muted">
+                None yet. LPS can copy a project folder from this PC, or use a folder you cloned in the VPS, and keep it running with its own links.
+              </p>
+            ) : (
+              <ul className="m-0 list-none p-0">
+                {v.apps.map((a, i) => (
+                  <li key={a.id} className={`flex items-center justify-between gap-3 px-4 py-2.5 ${i === v.apps.length - 1 ? "" : "border-b border-line-soft"}`}>
+                    <Link to={`/apps/${a.id}`} className="font-semibold text-ink no-underline hover:text-cyan-soft">
+                      {a.name}
+                    </Link>
+                    <span className="font-mono text-xs text-ink-2">
+                      {host}:{a.hostPort}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
           <Card title="Specification" flush>
             <SpecGrid
               items={[
@@ -142,13 +173,14 @@ export function VPSDetail() {
               <Button
                 variant="danger"
                 className="self-start"
-                disabled={del.isPending || v.state === "provisioning"}
+                disabled={del.isPending || v.state === "provisioning" || v.apps.length > 0}
                 onClick={() => {
                   if (confirm(`Delete VPS "${v.name}"?${keepData ? "" : " All files in /home will be lost."}`)) del.mutate();
                 }}
               >
                 Delete VPS
               </Button>
+              {v.apps.length > 0 && <span className="text-xs text-ink-muted">Delete the apps on this VPS first.</span>}
               <ErrorBox error={del.error} />
             </div>
           </Card>

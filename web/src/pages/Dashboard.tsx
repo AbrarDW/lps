@@ -106,7 +106,8 @@ export function AppList({ title = "Apps", action, limit }: { title?: string; act
       <ErrorBox error={apps.error} />
       {apps.data?.length === 0 && (
         <p className="m-0 p-4 text-ink-muted">
-          No apps yet. Point LPS at a project folder and it builds and runs it for you (it writes a Dockerfile if there isn't one).{" "}
+          No apps yet. Point LPS at a project folder and it runs it for you: in its own container (it writes a Dockerfile if there isn't one) or
+          inside one of your VPSes.{" "}
           <Link to="/apps/new">Add an app</Link>.
         </p>
       )}
@@ -126,8 +127,9 @@ function AppRow({ a, last }: { a: AppItem; last: boolean }) {
         <Link to={`/apps/${a.id}`} className="font-semibold text-ink no-underline hover:text-cyan-soft">
           {a.name}
         </Link>
-        <div className="truncate font-mono text-xs text-ink-muted">{a.sourcePath}</div>
+        <div className="truncate font-mono text-xs text-ink-muted">{a.sourceKind === "vps" ? `${a.vpsName}:${a.vpsPath}` : a.sourcePath}</div>
       </div>
+      {a.vpsId > 0 && <Tag intent="primary">VPS {a.vpsName}</Tag>}
       {a.publicUrl && <Tag intent="warning">Public</Tag>}
       {a.deploying ? <Tag intent="primary" dot>Building</Tag> : a.lastDeploy?.status === "failed" && a.state !== "running" ? <Tag intent="danger" dot>Build failed</Tag> : <StateBadge state={a.state} />}
       <span className="font-mono text-xs text-ink-2">:{a.hostPort}</span>
@@ -251,7 +253,7 @@ export function AppListPage() {
       <PageHeader
         sheet="Sheet 03 — Apps"
         title="Apps"
-        subtitle="Project folders built and run as containers. Redeploy any time; a failed build leaves the running version alone."
+        subtitle="Project folders run in their own container or inside a VPS. Redeploy any time; a failed container build leaves the running version alone."
         actions={
           <Link to="/apps/new" className={buttonClass("primary")}>
             <Icon name="plus" />

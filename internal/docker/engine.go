@@ -67,6 +67,18 @@ type Engine interface {
 	OpenTerminal(ctx context.Context, containerID, user string, cols, rows uint) (Terminal, error)
 	// Logs returns the last tail lines of combined stdout/stderr.
 	Logs(ctx context.Context, id string, tail int) (string, error)
+
+	// Exec runs cmd (no TTY) in a running container as user, in dir, writing
+	// combined output to out, and returns its exit code.
+	Exec(ctx context.Context, id, user, dir string, cmd, env []string, out io.Writer) (int, error)
+	// CopyTo extracts a tar stream into dir (which must exist) in a container.
+	CopyTo(ctx context.Context, id, dir string, content io.Reader) error
+	// InstallAppHelper installs the lps-app helper into a running VPS.
+	InstallAppHelper(ctx context.Context, id string) error
+	// EnsureNetwork creates the shared LPS network and attaches the VPS to it.
+	EnsureNetwork(ctx context.Context, vpsContainer string) error
+	// CreateRelay creates (but does not start) the container publishing a VPS app.
+	CreateRelay(ctx context.Context, spec RelaySpec) (string, error)
 }
 
 // VPSVolumeName is the persistent /home volume for a VPS.

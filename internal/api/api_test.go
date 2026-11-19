@@ -35,6 +35,7 @@ type fakeEngine struct {
 	buildErr   error
 	pingErr    error
 	lastTerm   *fakeTerm
+	fv         *fakeVPS
 }
 
 func newFake() *fakeEngine {
