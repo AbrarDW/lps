@@ -62,6 +62,27 @@ flowchart LR
 - **Each app** is a project folder on your PC. If it has no `Dockerfile`, LPS detects the project type and writes one for you to review. LPS builds it, runs it, publishes its port, and keeps a log of every deployment.
 - **Secure by default.** The dashboard and all published ports bind to `127.0.0.1`. The admin password is hashed with bcrypt, sessions are HttpOnly SameSite=Strict cookies, writes need a CSRF header, logins are rate-limited, and VPS containers are unprivileged with no Docker socket access.
 
+### Terminal in the browser
+
+Every running VPS has a **Terminal** card: click **Open terminal** for a shell as the VPS's user, right in the dashboard. No SSH client or keys are needed, and it works from your phone too over [remote access](#remote-access-with-tailscale). It supports colours, full screen and resizing (`vim`, `htop` and friends work), and `sudo` behaves exactly as it does over SSH.
+
+![Terminal in the browser](docs/images/terminal.png)
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (xterm.js)
+    participant L as lpsd
+    participant D as Docker
+    B->>L: WebSocket /api/vps/{id}/terminal (session cookie, same-origin only)
+    L->>D: exec bash -l as the VPS user, with a TTY
+    B-->>L: keystrokes (binary) · resize (JSON)
+    L-->>D: stdin · TTY resize
+    D-->>L: shell output
+    L-->>B: output (binary)
+```
+
+Only the signed-in admin can open a terminal. The WebSocket refuses cross-site requests (Origin check plus the SameSite=Strict session cookie), and each session is logged.
+
 ### Creating a VPS
 
 ```mermaid
@@ -343,7 +364,7 @@ flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Routing<br/>Caddy proxy,<br/>hostname per app,<br/>env vars, auto-detect builds"]
     m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel →<br/>Cloudflare Tunnel (own domain)"]
-    m4["4. VPS feel<br/>browser terminal,<br/>git-URL deploys,<br/>stats"]
+    m4["4. VPS feel<br/>✅ browser terminal,<br/>git-URL deploys,<br/>stats"]
     m5["5. Packaging<br/>✅ Windows installer + wizard,<br/>Linux + macOS next"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
@@ -351,7 +372,7 @@ flowchart LR
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Routing:** a Caddy reverse proxy with a hostname per app and per VPS HTTP port, env vars, and auto-detected builds (Node, Python, static) without a Dockerfile.
 3. **Remote access (pluggable):** ✅ Tailscale (no domain needed, private access to the dashboard, SSH and apps; Funnel for public links). Next: Cloudflare Quick Tunnel (instant public demo links), then Cloudflare Tunnel with your own domain. Optional 2FA (TOTP) before anything is exposed.
-4. **VPS feel:** a browser terminal, git-URL deploys and webhooks, and resource stats.
+4. **VPS feel:** ✅ browser terminal. Next: git-URL deploys and webhooks, and resource stats.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard (checks WSL2 and Docker, creates the admin, offers remote access, start with Windows). Next: code signing, auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License

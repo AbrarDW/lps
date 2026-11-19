@@ -34,6 +34,7 @@ type fakeEngine struct {
 	buildCtx   [][]string
 	buildErr   error
 	pingErr    error
+	lastTerm   *fakeTerm
 }
 
 func newFake() *fakeEngine {
@@ -101,6 +102,53 @@ func (f *fakeEngine) set(id, st string) error {
 	f.containers[id] = st
 	return nil
 }
+
+// fakeTerm echoes input back as "echo:<input>" and records resizes.
+type fakeTerm struct {
+	in      chan []byte
+	mu      sync.Mutex
+	resizes [][2]uint
+	user    string
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func (t *fakeTerm) Read(p []byte) (int, error) {
+	select {
+	case b := <-t.in:
+		return copy(p, append([]byte("echo:"), b...)), nil
+	case <-t.closed:
+		return 0, io.EOF
+	}
+}
+func (t *fakeTerm) Write(p []byte) (int, error) {
+	if string(p) == "exit" {
+		t.Close()
+		return len(p), nil
+	}
+	select {
+	case t.in <- append([]byte(nil), p...):
+	case <-t.closed:
+		return 0, io.ErrClosedPipe
+	}
+	return len(p), nil
+}
+func (t *fakeTerm) Close() error { t.once.Do(func() { close(t.closed) }); return nil }
+func (t *fakeTerm) Resize(_ context.Context, c, r uint) error {
+	t.mu.Lock()
+	t.resizes = append(t.resizes, [2]uint{c, r})
+	t.mu.Unlock()
+	return nil
+}
+
+func (f *fakeEngine) OpenTerminal(_ context.Context, id, user string, cols, rows uint) (docker.Terminal, error) {
+	t := &fakeTerm{in: make(chan []byte, 8), closed: make(chan struct{}), user: user, resizes: [][2]uint{{cols, rows}}}
+	f.mu.Lock()
+	f.lastTerm = t
+	f.mu.Unlock()
+	return t, nil
+}
+
 func (f *fakeEngine) Start(_ context.Context, id string) error { return f.set(id, docker.StateRunning) }
 func (f *fakeEngine) Stop(_ context.Context, id string) error  { return f.set(id, docker.StateStopped) }
 func (f *fakeEngine) Remove(_ context.Context, id string) error {

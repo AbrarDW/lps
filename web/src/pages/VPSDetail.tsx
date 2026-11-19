@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, displayHost } from "../api";
 import { Button, Card, CopyField, ErrorBox, LogView, StateBadge, formatLimits } from "../components/ui";
+
+// xterm.js is only downloaded when a terminal is opened.
+const VPSTerminal = lazy(() => import("../components/VPSTerminal"));
 
 export function VPSDetail() {
   const id = Number(useParams().id);
@@ -107,6 +110,8 @@ export function VPSDetail() {
         </div>
       </Card>
 
+      <TerminalCard vpsId={v.id} running={v.state === "running"} user={v.sshUser} />
+
       <Card
         title="Logs"
         actions={
@@ -140,5 +145,75 @@ export function VPSDetail() {
         </div>
       </Card>
     </>
+  );
+}
+
+function TerminalCard({ vpsId, running, user }: { vpsId: number; running: boolean; user: string }) {
+  const [session, setSession] = useState(0); // 0 = closed; bump to reconnect
+  const [full, setFull] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const open = session > 0;
+
+  const actions = (
+    <>
+      {open && connected && (
+        <Button variant="secondary" onClick={() => setFull(!full)}>
+          {full ? "Exit full screen" : "Full screen"}
+        </Button>
+      )}
+      {open ? (
+        <>
+          {!connected && (
+            <Button variant="secondary" disabled={!running} onClick={() => setSession(session + 1)}>
+              Reconnect
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setSession(0);
+              setFull(false);
+            }}
+          >
+            Close
+          </Button>
+        </>
+      ) : (
+        <Button disabled={!running} onClick={() => setSession(1)}>
+          Open terminal
+        </Button>
+      )}
+    </>
+  );
+
+  const body = open ? (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading terminal…</p>}>
+      <VPSTerminal key={session} vpsId={vpsId} focusKey={full} onStatus={(st) => setConnected(st === "connected")} />
+    </Suspense>
+  ) : (
+    <p className="text-sm text-slate-500 dark:text-slate-400">
+      {running
+        ? `Open a shell in this VPS as ${user}, right here in the browser. Works from your phone too, over remote access.`
+        : "Start the VPS to open a terminal."}
+    </p>
+  );
+
+  // One element whether or not it is full screen: switching parents would
+  // unmount the terminal and drop the shell session.
+  const fs = full && open;
+  return (
+    <section
+      className={
+        fs
+          ? "fixed inset-0 z-50 flex flex-col bg-slate-950 p-3 text-slate-100"
+          : "rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      }
+    >
+      <div className={`flex flex-wrap items-center justify-between gap-2 ${fs ? "mb-2" : "mb-4"}`}>
+        <h2 className={fs ? "text-sm text-slate-300" : "text-lg font-semibold"}>{fs ? `Terminal · ${user}` : "Terminal"}</h2>
+        <div className="flex flex-wrap gap-2">{actions}</div>
+      </div>
+      <div className={fs ? "min-h-0 flex-1" : open ? "h-[26rem]" : ""}>{body}</div>
+    </section>
   );
 }

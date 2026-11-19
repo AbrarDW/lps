@@ -156,6 +156,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/vps/{id}/start", s.handleVPSAction("start"))
 			r.Post("/vps/{id}/stop", s.handleVPSAction("stop"))
 			r.Get("/vps/{id}/logs", s.handleVPSLogs)
+			r.Get("/vps/{id}/terminal", s.handleVPSTerminal)
 
 			r.Get("/apps", s.handleListApps)
 			r.Post("/apps", s.handleCreateApp)
