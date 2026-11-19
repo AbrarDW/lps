@@ -37,6 +37,14 @@ type vpsView struct {
 	ProvisionLog string `json:"provisionLog,omitempty"`
 	// RemoteSSH is the SSH command over the tailnet, when remote access is active.
 	RemoteSSH string `json:"remoteSsh,omitempty"`
+	// Apps lists the apps deployed into this VPS.
+	Apps []vpsAppRef `json:"apps"`
+}
+
+type vpsAppRef struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	HostPort int    `json:"hostPort"`
 }
 
 type createVPSReq struct {
@@ -90,7 +98,12 @@ func (req *createVPSReq) validate() error {
 }
 
 func (s *Server) vpsView(r *http.Request, v *store.VPS) vpsView {
-	view := vpsView{VPS: v}
+	view := vpsView{VPS: v, Apps: []vpsAppRef{}}
+	if apps, err := s.store.ListAppsByVPS(r.Context(), v.ID); err == nil {
+		for _, a := range apps {
+			view.Apps = append(view.Apps, vpsAppRef{ID: a.ID, Name: a.Name, HostPort: a.HostPort})
+		}
+	}
 	if dns, active := s.remoteSnapshot(r.Context()); dns != "" {
 		if _, ok := active[v.SSHPort]; ok {
 			view.RemoteSSH = fmt.Sprintf("ssh %s@%s -p %d", v.SSHUser, dns, v.SSHPort)
@@ -254,6 +267,9 @@ func (s *Server) handleVPSAction(action string) http.HandlerFunc {
 			writeError(w, http.StatusBadGateway, action+" failed: "+err.Error())
 			return
 		}
+		if action == "start" {
+			s.kickVPSApps() // bring its apps back up
+		}
 		writeJSON(w, 200, s.vpsView(r, v))
 	}
 }
@@ -262,6 +278,17 @@ func (s *Server) handleVPSAction(action string) http.HandlerFunc {
 func (s *Server) handleDeleteVPS(w http.ResponseWriter, r *http.Request) {
 	v, ok := s.loadVPS(w, r)
 	if !ok || s.vpsBusy(w, v.ID) {
+		return
+	}
+	if apps, err := s.store.ListAppsByVPS(r.Context(), v.ID); err != nil {
+		s.internalError(w, err)
+		return
+	} else if len(apps) > 0 {
+		names := make([]string, len(apps))
+		for i, a := range apps {
+			names[i] = a.Name
+		}
+		writeError(w, http.StatusConflict, "this VPS runs apps; delete them first: "+strings.Join(names, ", "))
 		return
 	}
 	if err := s.engine.Remove(r.Context(), v.ContainerID); err != nil {

@@ -157,7 +157,7 @@ function ChecksStep({ onNext }: { onNext: () => void }) {
   return (
     <Card title="1. Check this PC">
       <p className="mb-2 text-[13px] text-ink-muted">
-        LPS runs your VPSes and apps in Linux containers using Docker. This list updates by itself while you fix things.
+        LPS runs your VPS and apps in Linux containers using Docker. This list updates by itself while you fix things.
       </p>
       <ErrorBox error={checks.error} />
       {!d ? (
@@ -219,7 +219,7 @@ function RemoteStep({ onNext }: { onNext: () => void }) {
     <Card title="3. Remote access (optional)">
       <div className="space-y-3 text-sm">
         <p>
-          Want to open LPS, SSH into your VPSes and test your apps when you're away from home? LPS can use{" "}
+          Want to open LPS, SSH into your VPS and test your apps when you're away from home? LPS can use{" "}
           <b>Tailscale</b> (free) to make them reachable from your own phone and laptop, without opening your router.
         </p>
         <p className="text-ink-muted">You can do this any time from the "Remote access" page.</p>
@@ -263,7 +263,7 @@ function FinishStep() {
             <Switch label="Start with Windows" checked={auto.data.enabled} disabled={set.isPending} onChange={(v) => set.mutate(v)} />
             <div>
               <div className="font-medium">Start LPS when I sign in to Windows</div>
-              <div className="text-xs text-ink-muted">Recommended, so your VPSes and apps are reachable after a restart.</div>
+              <div className="text-xs text-ink-muted">Recommended, so your VPS and apps are reachable after a restart.</div>
             </div>
           </div>
         )}

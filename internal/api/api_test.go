@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -24,17 +25,20 @@ import (
 
 // fakeEngine is an in-memory docker.Engine.
 type fakeEngine struct {
-	mu         sync.Mutex
-	n          int
-	containers map[string]string // id -> state
-	volumes    map[string]bool
-	vpsSpecs   []docker.VPSSpec
-	builds     []string
-	buildFiles []string // dockerfile name used for each build
-	buildCtx   [][]string
-	buildErr   error
-	pingErr    error
-	lastTerm   *fakeTerm
+	mu            sync.Mutex
+	n             int
+	containers    map[string]string // id -> state
+	volumes       map[string]bool
+	vpsSpecs      []docker.VPSSpec
+	builds        []string
+	buildFiles    []string // dockerfile name used for each build
+	buildCtx      [][]string
+	buildErr      error
+	pingErr       error
+	lastTerm      *fakeTerm
+	fv            *fakeVPS
+	removedImages []string
+	buildErrAt    map[int]bool // builds that failed (no image)
 }
 
 func newFake() *fakeEngine {
@@ -52,6 +56,29 @@ func (f *fakeEngine) Ping(context.Context) (string, error) {
 func (f *fakeEngine) EnsureVPSImage(context.Context, io.Writer) error   { return nil }
 func (f *fakeEngine) newID() string                                     { f.n++; return fmt.Sprintf("c%d", f.n) }
 func (f *fakeEngine) Logs(context.Context, string, int) (string, error) { return "hello\n", nil }
+func (f *fakeEngine) RemoveImage(_ context.Context, ref string) error {
+	f.mu.Lock()
+	f.removedImages = append(f.removedImages, ref)
+	f.mu.Unlock()
+	return nil
+}
+
+// ImageTags reports images built and not yet removed.
+func (f *fakeEngine) ImageTags(_ context.Context, repo string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	gone := map[string]bool{}
+	for _, r := range f.removedImages {
+		gone[r] = true
+	}
+	var out []string
+	for i, b := range f.builds {
+		if strings.HasPrefix(b, repo+":") && !gone[b] && (f.buildErrAt == nil || !f.buildErrAt[i]) {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}
 func (f *fakeEngine) RemoveVolume(_ context.Context, name string) error {
 	f.mu.Lock()
 	delete(f.volumes, name)
@@ -87,6 +114,12 @@ func (f *fakeEngine) BuildImage(_ context.Context, r io.Reader, tag, dockerfile 
 	io.Copy(io.Discard, r)
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.buildErr != nil {
+		if f.buildErrAt == nil {
+			f.buildErrAt = map[int]bool{}
+		}
+		f.buildErrAt[len(f.builds)] = true
+	}
 	f.builds = append(f.builds, tag)
 	f.buildFiles = append(f.buildFiles, dockerfile)
 	f.buildCtx = append(f.buildCtx, names)
@@ -385,7 +418,7 @@ func TestAppDeploy(t *testing.T) {
 	})
 	var ds []store.Deployment
 	h.do("GET", path+"/deployments", nil, &ds)
-	if len(ds) != 2 || ds[0].Status != store.DeployRunning || ds[0].Log == "" {
+	if len(ds) != 2 || ds[0].Status != store.DeployRunning || ds[0].Log == "" || ds[1].Status != store.DeployReplaced {
 		t.Fatalf("deployments = %+v", ds)
 	}
 	if _, ok := h.eng.containers[firstContainer]; ok {
@@ -424,5 +457,65 @@ func TestSPAFallback(t *testing.T) {
 	}
 	if res.Header.Get("X-Frame-Options") != "DENY" {
 		t.Fatal("security headers missing")
+	}
+}
+
+// Regression: every redeploy used to leave the earlier deployments "running"
+// and their images on disk.
+func TestRedeployReplacesOldDeployments(t *testing.T) {
+	h := setup(t)
+	h.login()
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM node:22-alpine\n"), 0o644)
+	var a appView
+	if code := h.do("POST", "/api/apps", createAppReq{Name: "node", SourcePath: dir, ContainerPort: 3000}, &a); code != 202 {
+		t.Fatalf("create: %d", code)
+	}
+	path := fmt.Sprintf("/api/apps/%d", a.ID)
+	idle := func() {
+		waitFor(t, func() bool {
+			var got appView
+			h.do("GET", path, nil, &got)
+			return !got.Deploying && got.LastDeploy != nil && got.LastDeploy.Status != store.DeployBuilding
+		})
+	}
+	idle()
+	for i := 0; i < 3; i++ {
+		if code := h.do("POST", path+"/deploy", nil, nil); code != 202 {
+			t.Fatalf("redeploy %d: %d", i, code)
+		}
+		idle()
+	}
+	var ds []store.Deployment
+	h.do("GET", path+"/deployments", nil, &ds)
+	running := 0
+	for _, d := range ds {
+		if d.Status == store.DeployRunning {
+			running++
+		}
+	}
+	if len(ds) != 4 || running != 1 || ds[0].Status != store.DeployRunning {
+		t.Fatalf("want exactly the newest running, got %+v", ds)
+	}
+	for _, d := range ds[1:] {
+		if d.Status != store.DeployReplaced {
+			t.Fatalf("deployment #%d = %s, want replaced", d.ID, d.Status)
+		}
+	}
+	// Images of #1 and #2 are removed; #3 (previous) and #4 (live) are kept.
+	h.eng.mu.Lock()
+	removed := strings.Join(h.eng.removedImages, ",")
+	h.eng.mu.Unlock()
+	if removed != "lps-app-node:1,lps-app-node:2" {
+		t.Fatalf("removed images = %q", removed)
+	}
+	if code := h.do("DELETE", path, nil, nil); code != 204 {
+		t.Fatalf("delete: %d", code)
+	}
+	h.eng.mu.Lock()
+	removed = strings.Join(h.eng.removedImages, ",")
+	h.eng.mu.Unlock()
+	if !strings.HasSuffix(removed, "lps-app-node:4,lps-app-node:3") {
+		t.Fatalf("delete should remove the remaining images, removed = %q", removed)
 	}
 }

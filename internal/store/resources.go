@@ -82,32 +82,57 @@ func (s *Store) DeleteVPS(ctx context.Context, id int64) error {
 
 // App is a directory with a Dockerfile deployed as a container.
 type App struct {
-	ID            int64     `json:"id"`
-	Name          string    `json:"name"`
-	SourcePath    string    `json:"sourcePath"`
-	ContainerPort int       `json:"containerPort"`
-	HostPort      int       `json:"hostPort"`
-	CPUs          float64   `json:"cpus"`
-	MemoryMB      int       `json:"memoryMb"`
-	ContainerID   string    `json:"containerId"`
-	PublicPort    int       `json:"publicPort"` // Funnel port; 0 = no public link
-	Dockerfile    string    `json:"dockerfile"` // stored in LPS; "" = use the project's Dockerfile
-	CreatedAt     time.Time `json:"createdAt"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	SourcePath    string  `json:"sourcePath"`
+	ContainerPort int     `json:"containerPort"`
+	HostPort      int     `json:"hostPort"`
+	CPUs          float64 `json:"cpus"`
+	MemoryMB      int     `json:"memoryMb"`
+	ContainerID   string  `json:"containerId"`
+	PublicPort    int     `json:"publicPort"` // Funnel port; 0 = no public link
+	Dockerfile    string  `json:"dockerfile"` // stored in LPS; "" = use the project's Dockerfile
+	// VPSID is the VPS the app runs in; 0 = its own container.
+	VPSID       int64     `json:"vpsId"`
+	SourceKind  string    `json:"sourceKind"` // SourcePC or SourceVPS
+	VPSPath     string    `json:"vpsPath"`    // code folder inside the VPS (SourceVPS)
+	Packages    string    `json:"packages"`   // apt packages the app needs (VPS apps)
+	InstallCmd  string    `json:"installCmd"` // run in the app folder on each deploy (VPS apps)
+	StartCmd    string    `json:"startCmd"`   // keeps running; LPS restarts it (VPS apps)
+	WantRunning bool      `json:"wantRunning"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
-const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, public_port, dockerfile, created_at`
+// App code sources.
+const (
+	SourcePC  = "pc"  // copied from a folder on this PC
+	SourceVPS = "vps" // a folder that already exists inside the VPS
+)
+
+// InVPS reports whether the app runs inside a VPS.
+func (a *App) InVPS() bool { return a.VPSID > 0 }
+
+const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, public_port, dockerfile,
+	vps_id, source_kind, vps_path, packages, install_cmd, start_cmd, want_running, created_at`
 
 func scanApp(r scanner) (*App, error) {
 	a := &App{}
-	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.PublicPort, &a.Dockerfile, &a.CreatedAt)
+	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.PublicPort, &a.Dockerfile,
+		&a.VPSID, &a.SourceKind, &a.VPSPath, &a.Packages, &a.InstallCmd, &a.StartCmd, &a.WantRunning, &a.CreatedAt)
 	return a, err
 }
 
 // CreateApp inserts an app record.
 func (s *Store) CreateApp(ctx context.Context, a *App) error {
 	a.CreatedAt = time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `INSERT INTO apps (name, source_path, container_port, host_port, cpus, memory_mb, container_id, dockerfile, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, a.Name, a.SourcePath, a.ContainerPort, a.HostPort, a.CPUs, a.MemoryMB, a.ContainerID, a.Dockerfile, a.CreatedAt)
+	if a.SourceKind == "" {
+		a.SourceKind = SourcePC
+	}
+	a.WantRunning = true
+	res, err := s.db.ExecContext(ctx, `INSERT INTO apps (name, source_path, container_port, host_port, cpus, memory_mb, container_id, dockerfile,
+		vps_id, source_kind, vps_path, packages, install_cmd, start_cmd, want_running, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`, a.Name, a.SourcePath, a.ContainerPort, a.HostPort, a.CPUs, a.MemoryMB, a.ContainerID, a.Dockerfile,
+		a.VPSID, a.SourceKind, a.VPSPath, a.Packages, a.InstallCmd, a.StartCmd, a.CreatedAt)
 	if err != nil {
 		return mapErr(err)
 	}
@@ -126,7 +151,16 @@ func (s *Store) GetApp(ctx context.Context, id int64) (*App, error) {
 
 // ListApps lists all apps.
 func (s *Store) ListApps(ctx context.Context) ([]*App, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+appCols+` FROM apps ORDER BY id`)
+	return s.queryApps(ctx, `SELECT `+appCols+` FROM apps ORDER BY id`)
+}
+
+// ListAppsByVPS lists the apps that run inside one VPS.
+func (s *Store) ListAppsByVPS(ctx context.Context, vpsID int64) ([]*App, error) {
+	return s.queryApps(ctx, `SELECT `+appCols+` FROM apps WHERE vps_id = ? ORDER BY id`, vpsID)
+}
+
+func (s *Store) queryApps(ctx context.Context, q string, args ...any) ([]*App, error) {
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +185,18 @@ func (s *Store) SetAppContainer(ctx context.Context, id int64, containerID strin
 // SetAppDockerfile stores (or clears with "") an app's LPS-managed Dockerfile.
 func (s *Store) SetAppDockerfile(ctx context.Context, id int64, dockerfile string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE apps SET dockerfile = ? WHERE id = ?`, dockerfile, id)
+	return err
+}
+
+// SetAppRunConfig replaces how a VPS app is set up and started.
+func (s *Store) SetAppRunConfig(ctx context.Context, id int64, packages, install, start string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE apps SET packages = ?, install_cmd = ?, start_cmd = ? WHERE id = ?`, packages, install, start, id)
+	return err
+}
+
+// SetAppWantRunning records whether LPS should keep a VPS app running.
+func (s *Store) SetAppWantRunning(ctx context.Context, id int64, want bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE apps SET want_running = ? WHERE id = ?`, want, id)
 	return err
 }
 
@@ -193,6 +239,8 @@ type Deployment struct {
 const (
 	DeployBuilding = "building"
 	DeployRunning  = "running"
+	// DeployReplaced is a deployment that ran until a newer one succeeded.
+	DeployReplaced = "replaced"
 	DeployFailed   = "failed"
 )
 
@@ -207,11 +255,26 @@ func (s *Store) CreateDeployment(ctx context.Context, appID int64) (*Deployment,
 	return d, nil
 }
 
-// FinishDeployment records the outcome of a deployment.
+// FinishDeployment records the outcome of a deployment. When it is now
+// running, the app's earlier running deployments are marked replaced.
 func (s *Store) FinishDeployment(ctx context.Context, id int64, status, image, log string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE deployments SET status = ?, image = ?, log = ?, finished_at = ? WHERE id = ?`,
-		status, image, log, time.Now().UTC(), id)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE deployments SET status = ?, image = ?, log = ?, finished_at = ? WHERE id = ?`,
+		status, image, log, time.Now().UTC(), id); err != nil {
+		return err
+	}
+	if status == DeployRunning {
+		if _, err := tx.ExecContext(ctx, `UPDATE deployments SET status = ?
+			WHERE app_id = (SELECT app_id FROM deployments WHERE id = ?) AND id <> ? AND status = ?`,
+			DeployReplaced, id, id, DeployRunning); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ListDeployments returns an app's deployments, newest first.

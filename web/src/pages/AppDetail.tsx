@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, displayHost } from "../api";
 import { DockerfileCard } from "../components/DockerfileCard";
+import { RunConfigCard } from "../components/RunConfigCard";
 import { ActionBox, Button, Callout, Card, CornerMarks, ErrorBox, Icon, LogView, StateBadge, Switch, Tabs, Tag, formatLimits } from "../components/ui";
 
 type AppTab = "deployments" | "dockerfile" | "logs";
@@ -60,6 +61,7 @@ export function AppDetail() {
   const url = `http://${displayHost(system.data?.bindIp)}:${a.hostPort}`;
   const shown = deployments.data?.find((d) => d.id === selected) ?? deployments.data?.[0];
   const running = a.state === "running";
+  const inVPS = a.vpsId > 0;
 
   return (
     <>
@@ -77,9 +79,22 @@ export function AppDetail() {
             <h1 className="m-0 text-[28px] font-semibold">{a.name}</h1>
             <StateBadge state={deploying ? "building" : a.state} />
             {a.publicUrl && <Tag intent="warning">Public</Tag>}
+            {inVPS && (
+              <Link to={`/vps/${a.vpsId}`} className="no-underline">
+                <Tag intent="primary">VPS {a.vpsName}</Tag>
+              </Link>
+            )}
           </div>
           <span className="font-mono text-xs break-all text-ink-faint">
-            {a.sourcePath} · container port {a.containerPort} · {formatLimits(a.cpus, a.memoryMb)} · {a.dockerfileSource === "lps" ? "Dockerfile stored in LPS" : "project Dockerfile"}
+            {inVPS ? (
+              <>
+                {a.sourceKind === "vps" ? `${a.vpsName}:${a.vpsPath}` : a.sourcePath} · port {a.containerPort} in the VPS · <span className="normal-case">{a.startCmd}</span>
+              </>
+            ) : (
+              <>
+                {a.sourcePath} · container port {a.containerPort} · {formatLimits(a.cpus, a.memoryMb)} · {a.dockerfileSource === "lps" ? "Dockerfile stored in LPS" : "project Dockerfile"}
+              </>
+            )}
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -133,8 +148,8 @@ export function AppDetail() {
           label="App views"
           tabs={[
             { id: "deployments", label: "Deployments" },
-            { id: "dockerfile", label: "Dockerfile" },
-            { id: "logs", label: "Container logs" },
+            { id: "dockerfile", label: inVPS ? "Run setup" : "Dockerfile" },
+            { id: "logs", label: inVPS ? "App logs" : "Container logs" },
           ]}
           value={tab}
           onChange={setTab}
@@ -188,7 +203,7 @@ export function AppDetail() {
         )}
         {tab === "dockerfile" && (
           <div className="p-4">
-            <DockerfileCard appId={a.id} deploying={deploying} bare />
+            {inVPS ? <RunConfigCard app={a} deploying={deploying} /> : <DockerfileCard appId={a.id} deploying={deploying} bare />}
           </div>
         )}
         {tab === "logs" && (
@@ -233,13 +248,15 @@ export function AppDetail() {
 
         <Card title="Danger zone" tone="danger" className="flex-[1_1_300px]">
           <div className="flex flex-col gap-3 text-[13px]">
-            <p className="m-0 text-ink-2">The container is removed. Your project folder is not touched.</p>
+            <p className="m-0 text-ink-2">
+              {inVPS ? "The app is stopped and its relay removed. Its folder in the VPS is kept." : "The container is removed. Your project folder is not touched."}
+            </p>
             <Button
               variant="danger"
               className="self-start"
               disabled={del.isPending || deploying}
               onClick={() => {
-                if (confirm(`Delete app "${a.name}"? The container is removed; your project folder is not touched.`)) del.mutate();
+                if (confirm(`Delete app "${a.name}"? ${inVPS ? "Its folder in the VPS is kept." : "The container is removed; your project folder is not touched."}`)) del.mutate();
               }}
             >
               Delete app
