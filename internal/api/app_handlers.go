@@ -212,6 +212,11 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		storeError(s, w, err, "app")
 		return
 	}
+	where := "in its own container"
+	if a.InVPS() {
+		where = "in a VPS"
+	}
+	s.info(r, "app.created", subjApp, a.ID, a.Name, "Created app %s (%s)", a.Name, where)
 	if _, err := s.startDeploy(a); err != nil {
 		s.internalError(w, err)
 		return
@@ -281,6 +286,11 @@ func (s *Server) startDeploy(a *store.App) (*store.Deployment, error) {
 		}
 		if ferr := s.store.FinishDeployment(s.ctx, d.ID, status, image, buf.String()); ferr != nil {
 			s.log.Error("finish deployment", "err", ferr)
+		}
+		if err != nil {
+			s.fail(nil, "app.deploy_failed", subjApp, a.ID, a.Name, "Deploy #%d of %s failed: %s", d.ID, a.Name, firstLine(err.Error()))
+		} else {
+			s.info(nil, "app.deployed", subjApp, a.ID, a.Name, "Deploy #%d of %s is running", d.ID, a.Name)
 		}
 		if err == nil && !a.InVPS() {
 			s.pruneImages(a.Name, keepImages)
@@ -384,6 +394,7 @@ func (s *Server) handleDeployApp(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.info(r, "app.redeploy", subjApp, a.ID, a.Name, "Redeploy #%d of %s started", d.ID, a.Name)
 	writeJSON(w, http.StatusAccepted, d)
 }
 
@@ -408,6 +419,11 @@ func (s *Server) handleAppAction(action string) http.HandlerFunc {
 		if err != nil {
 			writeError(w, http.StatusBadGateway, action+" failed: "+err.Error())
 			return
+		}
+		if action == "start" {
+			s.info(r, "app.started", subjApp, a.ID, a.Name, "Started app %s", a.Name)
+		} else {
+			s.info(r, "app.stopped", subjApp, a.ID, a.Name, "Stopped app %s", a.Name)
 		}
 		writeJSON(w, 200, s.appView(r, a))
 	}
@@ -442,6 +458,7 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.warn(r, "app.deleted", subjApp, a.ID, a.Name, "Deleted app %s", a.Name)
 	s.kickRemote()
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -594,6 +611,11 @@ func (s *Server) handleSetAppDockerfile(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.Dockerfile = req.Dockerfile
+	if req.Dockerfile == "" {
+		s.info(r, "app.dockerfile", subjApp, a.ID, a.Name, "%s now builds with the project's Dockerfile", a.Name)
+	} else {
+		s.info(r, "app.dockerfile", subjApp, a.ID, a.Name, "Dockerfile of %s changed", a.Name)
+	}
 	if _, err := s.startDeploy(a); errors.Is(err, errDeployInProgress) {
 		writeError(w, http.StatusConflict, "saved, but a deployment is already running; redeploy when it finishes")
 		return

@@ -17,13 +17,14 @@ import (
 // fakeVPS simulates what runs inside VPS containers: lps-app processes,
 // copied files and executed commands.
 type fakeVPS struct {
-	procs    map[string]int // app name -> port, while running
-	execs    []string       // "user: cmd args..."
-	copies   map[string][]string
-	relays   []docker.RelaySpec
-	networks []string
-	execFail map[string]int // command prefix -> exit code
-	loopback bool           // apps listen on 127.0.0.1 only
+	procs      map[string]int // app name -> port, while running
+	execs      []string       // "user: cmd args..."
+	copies     map[string][]string
+	relays     []docker.RelaySpec
+	networks   []string
+	execFail   map[string]int // command prefix -> exit code
+	loopback   bool           // apps listen on 127.0.0.1 only
+	usageTicks int
 }
 
 func (f *fakeEngine) vps() *fakeVPS {
@@ -81,6 +82,13 @@ func (f *fakeEngine) Exec(_ context.Context, id, user, dir string, cmd, env []st
 			}
 		case "logs":
 			fmt.Fprintln(out, "app says hi")
+		case "usage":
+			v.usageTicks += 50 // half a core per fake second… roughly; only the shape matters
+			if _, ok := v.procs[name]; ok {
+				fmt.Fprintf(out, "%d 2560 100 4096\n", v.usageTicks)
+			} else {
+				fmt.Fprintln(out, "0 0 100 4096")
+			}
 		}
 		return 0, nil
 	}

@@ -4,6 +4,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, displayHost } from "../api";
 import { DockerfileCard } from "../components/DockerfileCard";
 import { RunConfigCard } from "../components/RunConfigCard";
+import { ActivityList } from "../components/Activity";
+import { UsageCard } from "../components/Usage";
 import { ActionBox, Button, Callout, Card, CornerMarks, ErrorBox, Icon, LogView, StateBadge, Switch, Tabs, Tag, formatLimits } from "../components/ui";
 
 type AppTab = "deployments" | "dockerfile" | "logs";
@@ -212,6 +214,15 @@ export function AppDetail() {
             <LogView text={logs.data?.logs} className="!max-h-[26rem] min-h-[26rem]" />
           </div>
         )}
+      </section>
+
+      <section className="flex flex-wrap items-start gap-5">
+        <div className="min-w-0 flex-[999_1_520px]">
+          <UsageCard kind="apps" id={a.id} running={running} note={inVPS ? `Counts the app's own processes inside VPS ${a.vpsName}.` : undefined} />
+        </div>
+        <Card title="Activity" flush className="flex-[1_1_320px]">
+          <ActivityList subject="app" id={a.id} limit={8} showLinks={false} empty="Nothing has happened to this app yet." />
+        </Card>
       </section>
 
       <section className="flex flex-wrap items-start gap-5">

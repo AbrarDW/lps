@@ -487,8 +487,10 @@ func (s *Server) reconcileVPSApps(ctx context.Context) {
 		}
 		if err := s.startVPSApp(ctx, a); err != nil {
 			s.log.Warn("restart VPS app", "app", a.Name, "err", err)
+			s.fail(nil, "app.restart_failed", subjApp, a.ID, a.Name, "Could not restart %s: %s", a.Name, firstLine(err.Error()))
 		} else {
 			s.log.Info("restarted VPS app", "app", a.Name)
+			s.warn(nil, "app.restarted", subjApp, a.ID, a.Name, "Restarted %s, which had stopped", a.Name)
 		}
 	}
 }
@@ -521,6 +523,7 @@ func (s *Server) handleSetAppRunConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Packages, a.InstallCmd, a.StartCmd = pk, install, start
+	s.info(r, "app.run_config", subjApp, a.ID, a.Name, "Run setup of %s changed", a.Name)
 	if _, err := s.startDeploy(a); errors.Is(err, errDeployInProgress) {
 		writeError(w, http.StatusConflict, "saved, but a deployment is already running; redeploy when it finishes")
 		return

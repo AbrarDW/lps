@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"runtime"
@@ -56,6 +57,8 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.addEvent(&store.Event{Kind: "auth.setup", Subject: subjAuth, Actor: u.Username, IP: clientIP(r),
+		Message: fmt.Sprintf("Admin account %s created", u.Username)})
 	writeJSON(w, 201, u)
 }
 
@@ -80,6 +83,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !auth.CheckPasswordOrDummy(hash, c.Password) {
 		s.limiter.Fail(ip)
 		s.log.Warn("failed login", "user", c.Username, "ip", ip)
+		name := c.Username
+		if len(name) > 64 {
+			name = name[:64]
+		}
+		s.addEvent(&store.Event{Level: store.LevelWarning, Kind: "auth.login_failed", Subject: subjAuth, IP: ip,
+			Message: fmt.Sprintf("Failed sign-in as %q", name)})
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
@@ -88,6 +97,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.addEvent(&store.Event{Kind: "auth.login", Subject: subjAuth, Actor: u.Username, IP: ip, Message: u.Username + " signed in"})
 	writeJSON(w, 200, u)
 }
 

@@ -15,8 +15,10 @@ import {
   StateBadge,
   Tabs,
   buttonClass,
-  formatLimits,
 } from "../components/ui";
+
+import { ActivityList } from "../components/Activity";
+import { UsageCard, cpuShare, formatBytes, useStats } from "../components/Usage";
 
 // xterm.js is only downloaded when a terminal is opened.
 const VPSTerminal = lazy(() => import("../components/VPSTerminal"));
@@ -27,6 +29,7 @@ export function VPSDetail() {
   const qc = useQueryClient();
   const [keepData, setKeepData] = useState(false);
   const system = useQuery({ queryKey: ["system"], queryFn: api.system });
+  const stats = useStats();
   const vps = useQuery({
     queryKey: ["vps", id],
     queryFn: () => api.getVPS(id),
@@ -52,6 +55,7 @@ export function VPSDetail() {
   const host = displayHost(system.data?.bindIp);
   const sshCmd = `ssh ${v.sshUser}@${host} -p ${v.sshPort}`;
   const busy = v.state === "provisioning" || action.isPending;
+  const usage = stats.data?.vps[String(v.id)];
 
   return (
     <>
@@ -95,6 +99,17 @@ export function VPSDetail() {
       <section className="flex flex-wrap items-start gap-5">
         <div className="min-w-0 flex-[999_1_640px]">
           <ShellPanel vpsId={v.id} running={v.state === "running"} user={v.sshUser} hasContainer={!!v.containerId} />
+          <div className="mt-5 flex flex-col gap-5">
+            <UsageCard
+              kind="vps"
+              id={v.id}
+              running={v.state === "running"}
+              note={v.apps.length > 0 ? "Includes the apps running in this VPS." : undefined}
+            />
+            <Card title="Activity" flush>
+              <ActivityList subject="vps" id={v.id} limit={8} showLinks={false} empty="Nothing has happened on this VPS yet." />
+            </Card>
+          </div>
         </div>
 
         <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
@@ -156,7 +171,14 @@ export function VPSDetail() {
               items={[
                 { label: "User", value: `${v.sshUser} · ${v.sshPublicKey ? "SSH key" : "password"}` },
                 { label: "Image", value: "Ubuntu 24.04" },
-                { label: "Limits", value: formatLimits(v.cpus, v.memoryMb) },
+                {
+                  label: "CPU",
+                  value: `${v.cpus > 0 ? `${v.cpus} ${v.cpus === 1 ? "core" : "cores"}` : "No limit"}${usage ? ` · ${Math.round(cpuShare(usage))}% now` : ""}`,
+                },
+                {
+                  label: "Memory",
+                  value: usage ? `${formatBytes(usage.mem)} / ${formatBytes(usage.memLimit)}` : v.memoryMb > 0 ? `${formatBytes(v.memoryMb << 20)} limit` : "No limit",
+                },
                 { label: "SSH port", value: <span className="font-mono">{v.sshPort}</span> },
                 { label: "/home volume", value: "persistent" },
                 { label: "Published on", value: <span className="font-mono">{system.data?.bindIp ?? "127.0.0.1"}</span> },

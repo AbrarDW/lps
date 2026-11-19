@@ -357,6 +357,11 @@ func (s *Server) handleSetRemote(w http.ResponseWriter, r *http.Request) {
 	}
 	s.freshStatus()
 	s.reconcile(r.Context())
+	if req.Enabled {
+		s.info(r, "remote.enabled", subjRemote, 0, "", "Remote access turned on")
+	} else {
+		s.info(r, "remote.disabled", subjRemote, 0, "", "Remote access turned off")
+	}
 	writeJSON(w, 200, s.buildRemoteView(r.Context(), false))
 }
 
@@ -418,6 +423,11 @@ func (s *Server) handleSetAppPublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.reconcile(ctx)
+	if req.Public {
+		s.warn(r, "app.public_on", subjApp, a.ID, a.Name, "Public link turned on for %s", a.Name)
+	} else {
+		s.info(r, "app.public_off", subjApp, a.ID, a.Name, "Public link turned off for %s", a.Name)
+	}
 	writeJSON(w, 200, s.appView(r, a))
 }
 

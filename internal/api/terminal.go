@@ -97,6 +97,7 @@ func (s *Server) handleVPSTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 	defer term.Close()
 	s.log.Info("terminal opened", "vps", v.Name, "user", v.SSHUser, "ip", clientIP(r))
+	s.info(r, "vps.terminal", subjVPS, v.ID, v.Name, "Terminal opened on %s", v.Name)
 	defer s.log.Info("terminal closed", "vps", v.Name)
 
 	// Shell output -> browser.

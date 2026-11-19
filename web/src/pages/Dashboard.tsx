@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, type AppItem, type VPS } from "../api";
+import { ActivityList } from "../components/Activity";
 import { Button, Callout, Card, ErrorBox, Icon, Input, PageHeader, StateBadge, Switch, Tag, TitleBlock, buttonClass, formatLimits } from "../components/ui";
+import { UsageInline, formatBytes, useStats } from "../components/Usage";
 
 const th = "border-b border-line px-4 py-2.5 text-left font-mono text-[11px] font-medium tracking-[0.08em] text-ink-faint uppercase";
 const td = "border-b border-line-soft px-4 py-3 align-middle";
@@ -45,6 +47,7 @@ export function VPSTable({ title = "Linux VPS", action }: { title?: string; acti
                 <th className={th}>State</th>
                 <th className={th}>SSH</th>
                 <th className={th}>Limits</th>
+                <th className={th}>CPU · Memory</th>
                 <th className={th}>Remote</th>
                 <th className={th}>
                   <span className="sr-only">Actions</span>
@@ -65,6 +68,7 @@ export function VPSTable({ title = "Linux VPS", action }: { title?: string; acti
 
 function VPSRow({ v, striped }: { v: VPS; striped: boolean }) {
   const qc = useQueryClient();
+  const usage = useStats().data?.vps[String(v.id)];
   const start = useMutation({ mutationFn: () => api.vpsAction(v.id, "start"), onSuccess: () => qc.invalidateQueries({ queryKey: ["vps"] }) });
   return (
     <tr className={striped ? "bg-white/[0.02]" : ""}>
@@ -79,6 +83,7 @@ function VPSRow({ v, striped }: { v: VPS; striped: boolean }) {
       </td>
       <td className={`${td} font-mono text-xs`}>:{v.sshPort}</td>
       <td className={`${td} text-[13px] text-ink-2`}>{formatLimits(v.cpus, v.memoryMb)}</td>
+      <td className={td}>{v.state === "running" ? <UsageInline u={usage} /> : <span className="text-ink-faint">—</span>}</td>
       <td className={`${td} text-[13px] ${v.remoteSsh ? "text-cyan-soft" : "text-ink-faint"}`}>{v.remoteSsh ? "tailnet" : "—"}</td>
       <td className={`${td} text-right whitespace-nowrap`}>
         {v.state === "running" ? (
@@ -121,6 +126,7 @@ export function AppList({ title = "Apps", action, limit }: { title?: string; act
 }
 
 function AppRow({ a, last }: { a: AppItem; last: boolean }) {
+  const usage = useStats().data?.apps[String(a.id)];
   return (
     <li className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 ${last ? "" : "border-b border-line-soft"}`}>
       <div className="min-w-0 flex-[1_1_220px]">
@@ -132,6 +138,7 @@ function AppRow({ a, last }: { a: AppItem; last: boolean }) {
       {a.vpsId > 0 && <Tag intent="primary">VPS {a.vpsName}</Tag>}
       {a.publicUrl && <Tag intent="warning">Public</Tag>}
       {a.deploying ? <Tag intent="primary" dot>Building</Tag> : a.lastDeploy?.status === "failed" && a.state !== "running" ? <Tag intent="danger" dot>Build failed</Tag> : <StateBadge state={a.state} />}
+      {a.state === "running" && <UsageInline u={usage} />}
       <span className="font-mono text-xs text-ink-2">:{a.hostPort}</span>
     </li>
   );
@@ -158,6 +165,15 @@ export function Dashboard() {
   const appsRunning = apps.data?.filter((a) => a.state === "running").length ?? 0;
   const appsPublic = apps.data?.filter((a) => a.publicUrl).length ?? 0;
   const r = remote.data;
+  // Totals over containers LPS runs. Apps inside a VPS are already part of their VPS.
+  const stats = useStats().data;
+  const ownContainerApps = new Set(apps.data?.filter((a) => a.vpsId === 0).map((a) => String(a.id)));
+  const totals = stats
+    ? [...Object.values(stats.vps), ...Object.entries(stats.apps).filter(([id]) => ownContainerApps.has(id)).map(([, u]) => u)].reduce(
+        (t, u) => ({ cpu: t.cpu + u.cpu, mem: t.mem + u.mem }),
+        { cpu: 0, mem: 0 },
+      )
+    : null;
 
   return (
     <>
@@ -205,20 +221,50 @@ export function Dashboard() {
             </Link>
           )}
         </div>
+        <Stat
+          label="Usage now"
+          foot={stats?.host.cpus ? `of ${stats.host.cpus} CPUs · ${formatBytes(stats.host.memBytes)} available to Docker` : "VPS and apps together"}
+        >
+          {totals ? (
+            <>
+              {Math.round(stats?.host.cpus ? totals.cpu / stats.host.cpus : totals.cpu)}%{" "}
+              <span className="text-sm font-normal text-ink-muted">CPU · {formatBytes(totals.mem)}</span>
+            </>
+          ) : (
+            "…"
+          )}
+        </Stat>
         <Stat label="Docker" foot={docker?.ok ? `${system.data?.os}/${system.data?.arch}` : docker?.hint}>
           <span className="text-base">{docker ? (docker.ok ? `Running · ${docker.version}` : "Not reachable") : "…"}</span>
         </Stat>
       </section>
 
       <VPSTable />
-      <AppList
-        limit={6}
-        action={
-          <Link to="/apps" className="text-[13px]">
-            View all
-          </Link>
-        }
-      />
+      <section className="flex flex-wrap items-start gap-5">
+        <div className="min-w-0 flex-[999_1_560px]">
+          <AppList
+            limit={6}
+            action={
+              <Link to="/apps" className="text-[13px]">
+                View all
+              </Link>
+            }
+          />
+        </div>
+        <div className="min-w-0 flex-[1_1_300px]">
+          <Card
+            title="Activity"
+            flush
+            actions={
+              <Link to="/activity" className="text-[13px]">
+                View all
+              </Link>
+            }
+          >
+            <ActivityList limit={8} />
+          </Card>
+        </div>
+      </section>
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <AutostartToggle />

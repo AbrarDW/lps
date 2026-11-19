@@ -83,6 +83,11 @@ type Engine interface {
 	EnsureNetwork(ctx context.Context, vpsContainer string) error
 	// CreateRelay creates (but does not start) the container publishing a VPS app.
 	CreateRelay(ctx context.Context, spec RelaySpec) (string, error)
+
+	// Usage takes one resource-usage sample of a running container.
+	Usage(ctx context.Context, id string) (Usage, error)
+	// HostInfo reports the CPUs and memory available to containers.
+	HostInfo(ctx context.Context) (HostInfo, error)
 }
 
 // VPSVolumeName is the persistent /home volume for a VPS.

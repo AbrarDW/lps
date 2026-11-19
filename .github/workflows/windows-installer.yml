@@ -37,9 +37,53 @@ jobs:
         shell: pwsh
         run: go test ./internal/platform/... ./internal/tunnel/... ./internal/app/...
 
+      # Code signing (optional): add the repository secrets WINDOWS_SIGN_PFX_BASE64
+      # (a .pfx code-signing certificate, base64-encoded) and WINDOWS_SIGN_PASSWORD.
+      # Without them the installer is built unsigned.
+      - name: Load the code-signing certificate
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
+        run: |
+          if (-not $env:PFX_BASE64) { Write-Host "No signing certificate configured: building unsigned."; exit 0 }
+          $pfx = Join-Path $env:RUNNER_TEMP 'lps-sign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+          "LPS_SIGN_PFX=$pfx" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "LPS_SIGN_PASSWORD=$env:PFX_PASSWORD" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Signing certificate loaded."
+
       - name: Build installer
         shell: pwsh
         run: .\build.ps1 installer
+
+      - name: Check the signing path (throwaway self-signed certificate, scratch copy only)
+        if: env.LPS_SIGN_PFX == ''
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=LPS signing self-test' -CertStoreLocation Cert:\CurrentUser\My
+          $pfx = Join-Path $env:RUNNER_TEMP 'selftest.pfx'
+          $pw = ConvertTo-SecureString -String 'selftest' -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $pw | Out-Null
+          $copy = Join-Path $env:RUNNER_TEMP 'lpsd-signing-test.exe'
+          Copy-Item .\bin\lpsd.exe $copy
+          $env:LPS_SIGN_PFX = $pfx; $env:LPS_SIGN_PASSWORD = 'selftest'; $env:LPS_SIGN_TIMESTAMP = 'none'
+          .\build.ps1 sign -Files $copy
+          $sig = Get-AuthenticodeSignature $copy
+          if (-not $sig.SignerCertificate -or $sig.SignerCertificate.Subject -ne 'CN=LPS signing self-test') { throw "copy was not signed: $($sig.Status) $($sig.StatusMessage)" }
+          Write-Host "Signing path works (signer: $($sig.SignerCertificate.Subject); status $($sig.Status), expected for a self-signed cert)."
+          if ((Get-AuthenticodeSignature .\bin\lpsd.exe).SignerCertificate) { throw "the shipped lpsd.exe must not carry the self-test signature" }
+          Remove-Item Cert:\CurrentUser\My\$($cert.Thumbprint)
+
+      - name: Check the checksum file
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\LPS-Setup-*.exe | Select-Object -First 1
+          $want = (Get-Content "$($setup.FullName).sha256").Split(' ')[0]
+          $got = (Get-FileHash -Algorithm SHA256 $setup.FullName).Hash.ToLower()
+          if ($want -ne $got) { throw "checksum mismatch: $want vs $got" }
+          Write-Host "$($setup.Name) SHA-256 $got"
+          Write-Host "Signature: $((Get-AuthenticodeSignature $setup.FullName).Status)"
 
       - name: Smoke test lpsd.exe
         shell: pwsh
@@ -94,11 +138,15 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: LPS-Setup
-          path: dist/LPS-Setup-*.exe
+          path: |
+            dist/LPS-Setup-*.exe
+            dist/LPS-Setup-*.exe.sha256
           if-no-files-found: error
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/LPS-Setup-*.exe
+          files: |
+            dist/LPS-Setup-*.exe
+            dist/LPS-Setup-*.exe.sha256

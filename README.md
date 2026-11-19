@@ -11,7 +11,7 @@ The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy d
 ## Install on Windows
 
 1. Download **`LPS-Setup-<version>.exe`** from the [Releases page](https://github.com/AbrarDW/lps/releases) (or, for a development build, from the latest successful **Windows installer** run under the repository's *Actions* tab → *Artifacts*).
-2. Run it. It installs for your user only (no administrator rights needed) into `%LOCALAPPDATA%\Programs\LPS`. Because the installer isn't code-signed yet, Windows SmartScreen may warn: choose **More info → Run anyway**.
+2. Run it. It installs for your user only (no administrator rights needed) into `%LOCALAPPDATA%\Programs\LPS`. Until the installer is code-signed, Chrome and Windows may warn about it; see [Download blocked?](#download-blocked).
 3. LPS starts with an icon in the system tray and opens the **setup wizard** in your browser.
 
 ```mermaid
@@ -30,6 +30,31 @@ The wizard checks everything LPS needs and tells you how to fix what's missing: 
 **Day to day:** right-click the **LPS tray icon** for *Open dashboard*, *Start with Windows* and *Quit LPS*. Quitting LPS doesn't stop running VPS or apps; they keep running in Docker Desktop.
 
 **Uninstall:** Windows Settings → Apps → *LPS - Local Personal Server*. Your data (`%ProgramData%\LPS`) is kept so a reinstall picks up your VPS and apps; delete that folder to remove everything.
+
+### Download blocked?
+
+Browsers and Windows warn about programs that are **not code-signed** and that few people have downloaded yet. The LPS installer is built in the open by GitHub Actions from this repository, but it isn't signed yet, so you may see:
+
+| Where | What it says | What to do |
+|---|---|---|
+| Chrome | *"LPS-Setup… isn't commonly downloaded"* or *"…may be dangerous"* | Open the downloads list (**Ctrl+J**), then choose **Keep** (or **⋮ → Download dangerous file**). |
+| Edge | *"…isn't commonly downloaded"* | **⋯ → Keep → Show more → Keep anyway**. |
+| Windows SmartScreen | *"Windows protected your PC"* | **More info → Run anyway**. |
+
+To check you got the genuine file, compare its SHA-256 with the `.sha256` file published next to it (on the Releases page and in the Actions artifact):
+
+```powershell
+Get-FileHash -Algorithm SHA256 .\LPS-Setup-*.exe
+```
+
+Or build the installer yourself from source with `.\build.ps1 installer` (see [Build from source](#build-from-source)); nothing is downloaded then.
+
+**For maintainers: turning on code signing.** Signing makes these warnings go away (immediately with an EV certificate, after some downloads with a standard one). `build.ps1` signs `lps.exe`, `lpsd.exe` and the setup program whenever a certificate is configured:
+
+- **Locally:** set `LPS_SIGN_PFX` to a `.pfx` code-signing certificate and `LPS_SIGN_PASSWORD` to its password, then run `.\build.ps1 installer`.
+- **In GitHub Actions:** add the repository secrets `WINDOWS_SIGN_PFX_BASE64` (the `.pfx`, base64-encoded: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))`) and `WINDOWS_SIGN_PASSWORD`. Every build is then signed and timestamped.
+
+Certificates from a certificate authority come as (or can be exported to) a `.pfx`. Free or low-cost options for an open-source project, [SignPath Foundation](https://signpath.org/) (free for OSS) and Microsoft's Azure Trusted Signing, don't hand you a `.pfx`: they sign through their own GitHub Action, which would take the place of the *Load the code-signing certificate* step in `.github/workflows/windows-installer.yml`.
 
 ## How it works
 

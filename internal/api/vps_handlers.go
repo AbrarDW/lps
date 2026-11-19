@@ -168,6 +168,8 @@ func (s *Server) handleCreateVPS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.info(r, "vps.created", subjVPS, v.ID, v.Name, "Created VPS %s (SSH port %d)", v.Name, v.SSHPort)
+
 	// Provision in the background: the first run builds the Ubuntu image,
 	// which can take a few minutes.
 	task := &taskInfo{running: true, log: &syncBuffer{}}
@@ -188,8 +190,10 @@ func (s *Server) handleCreateVPS(w http.ResponseWriter, r *http.Request) {
 			s.log.Error("provision VPS", "name", v.Name, "err", err)
 			fmt.Fprintf(task.log, "\n[lps] provisioning failed: %v\n", err)
 			s.vpsTasks[v.ID] = &taskInfo{err: err.Error(), log: task.log}
+			s.fail(nil, "vps.provision_failed", subjVPS, v.ID, v.Name, "VPS %s could not be created: %v", v.Name, err)
 		} else {
 			delete(s.vpsTasks, v.ID)
+			s.info(nil, "vps.ready", subjVPS, v.ID, v.Name, "VPS %s is ready", v.Name)
 		}
 	}()
 	s.kickRemote()
@@ -269,6 +273,9 @@ func (s *Server) handleVPSAction(action string) http.HandlerFunc {
 		}
 		if action == "start" {
 			s.kickVPSApps() // bring its apps back up
+			s.info(r, "vps.started", subjVPS, v.ID, v.Name, "Started VPS %s", v.Name)
+		} else {
+			s.info(r, "vps.stopped", subjVPS, v.ID, v.Name, "Stopped VPS %s", v.Name)
 		}
 		writeJSON(w, 200, s.vpsView(r, v))
 	}
@@ -310,6 +317,11 @@ func (s *Server) handleDeleteVPS(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	delete(s.vpsTasks, v.ID)
 	s.mu.Unlock()
+	if r.URL.Query().Get("keepData") == "true" {
+		s.warn(r, "vps.deleted", subjVPS, v.ID, v.Name, "Deleted VPS %s (kept its /home volume)", v.Name)
+	} else {
+		s.warn(r, "vps.deleted", subjVPS, v.ID, v.Name, "Deleted VPS %s and its /home volume", v.Name)
+	}
 	s.kickRemote()
 	w.WriteHeader(http.StatusNoContent)
 }
