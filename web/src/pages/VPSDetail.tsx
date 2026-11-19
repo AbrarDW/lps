@@ -72,7 +72,8 @@ export function VPSDetail() {
               <div className="mb-1 text-sm font-medium">Connect from anywhere (Tailscale)</div>
               <CopyField value={v.remoteSsh} />
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Works from any of your devices signed in to Tailscale.
+                Only works on devices with the Tailscale app installed and signed in to the same account. The error
+                "Could not resolve hostname" means the device you are using is not on your tailnet.
               </p>
             </div>
           )}

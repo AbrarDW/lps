@@ -92,6 +92,9 @@ export function AppDetail() {
               <a className="text-indigo-600 hover:underline dark:text-indigo-400" href={a.remoteUrl} target="_blank" rel="noreferrer">
                 {a.remoteUrl}
               </a>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">
+                Tailscale devices only. Use the public link below to share with anyone.
+              </span>
             </div>
           )}
           <div className="break-all">

@@ -150,6 +150,12 @@ flowchart LR
 - Everything still listens on `127.0.0.1`; Tailscale forwards to it, so nothing is opened on your LAN or router.
 - Start lpsd with `-no-remote` to turn the integration off completely.
 
+### Troubleshooting
+
+- **"Could not resolve hostname" or the site can't be reached:** the device you're using must have the Tailscale app installed, connected, and signed in to the **same account** as the home PC. `*.ts.net` addresses are private and don't exist for other devices. Check that the PC appears in the device's Tailscale device list. On a Mac, keep **Use Tailscale DNS settings** on, and turn off other VPNs or iCloud Private Relay.
+- **It worked before, now it doesn't:** the home PC must be on and awake, with Docker Desktop, Tailscale and lpsd running. Press **Check again** on the Remote access page and look for errors.
+- **Sharing with someone without Tailscale:** turn on the app's **Public link**. It can take about a minute to start working.
+
 ## Screenshots
 
 | Create a VPS | VPS details |

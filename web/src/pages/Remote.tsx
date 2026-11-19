@@ -109,13 +109,48 @@ export function Remote() {
             </div>
           </Step>
           <Step n={5} title="Install Tailscale on your phone or laptop" state={r.enabled ? "todo" : "blocked"}>
-            <p>Sign in with the same account, then open your dashboard from anywhere:</p>
+            <p>
+              Sign in with the <b>same account</b>, then open your dashboard from anywhere. These addresses work only on
+              devices signed in to your Tailscale account.
+            </p>
             {r.dashboardUrl ? <CopyField value={r.dashboardUrl} /> : <p className="text-slate-500">The address appears here once it is active.</p>}
           </Step>
         </ol>
         {r.enabled && r.needsAction && <ActionBox message={r.needsAction.message} url={r.needsAction.url} />}
         <div className="mt-2">
           <ErrorBox error={toggle.error ?? sync.error ?? r.error} />
+        </div>
+      </Card>
+
+      <Card title="Troubleshooting">
+        <div className="space-y-2 text-sm">
+          <details className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <summary className="cursor-pointer font-medium">"Could not resolve hostname" or the site can't be reached</summary>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-600 dark:text-slate-300">
+              <li>
+                The device you are using must have the Tailscale app installed, <b>connected</b>, and signed in to the{" "}
+                <b>same account</b> as this PC. Without it, <code>{st.dnsName || "your-pc.tailnet.ts.net"}</code> does not
+                exist for that device.
+              </li>
+              <li>Check that this PC appears in the device's Tailscale device list.</li>
+              <li>On a Mac, keep "Use Tailscale DNS settings" turned on in the Tailscale app.</li>
+              <li>Turn off other VPNs or iCloud Private Relay, which can override DNS.</li>
+            </ul>
+          </details>
+          <details className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <summary className="cursor-pointer font-medium">It worked before, now it doesn't</summary>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-600 dark:text-slate-300">
+              <li>This PC must be on and awake, with Docker Desktop, Tailscale and lpsd running.</li>
+              <li>Press "Check again" above and look for errors in "What is reachable".</li>
+            </ul>
+          </details>
+          <details className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <summary className="cursor-pointer font-medium">Sharing with someone who doesn't have Tailscale</summary>
+            <p className="mt-2 text-slate-600 dark:text-slate-300">
+              Open the app and turn on its <b>Public link</b>. Public links can take about a minute to start working. The
+              dashboard and SSH are never made public.
+            </p>
+          </details>
         </div>
       </Card>
 
