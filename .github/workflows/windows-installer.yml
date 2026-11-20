@@ -133,6 +133,7 @@ jobs:
 
       - name: Silent install, check, uninstall
         shell: pwsh
+        timeout-minutes: 15
         run: |
           $setup = Get-ChildItem dist\LPS-Setup-*.exe | Select-Object -First 1
           Write-Host "Installing $($setup.Name)"
@@ -149,7 +150,11 @@ jobs:
           # In-app update: the dashboard runs the new installer silently over
           # the existing install with /RELAUNCH=1; LPS must come back by itself.
           Write-Host "Update over the existing install with /RELAUNCH=1"
-          Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/RELAUNCH=1' -Wait
+          # Wait for the installer only: Start-Process -Wait would also wait for
+          # the lps.exe it starts, which keeps running by design.
+          $u = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/RELAUNCH=1' -PassThru
+          if (-not $u.WaitForExit(300000)) { throw "the update installer did not finish within 5 minutes" }
+          if ($u.ExitCode -ne 0) { throw "the update installer exited with code $($u.ExitCode)" }
           $ok = $false
           for ($i = 0; $i -lt 30; $i++) {
             try { if ((Invoke-WebRequest http://127.0.0.1:7070/api/health -UseBasicParsing).StatusCode -eq 200) { $ok = $true; break } } catch {}
