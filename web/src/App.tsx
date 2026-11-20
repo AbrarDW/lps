@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api, ApiError } from "./api";
 import { AuthPage } from "./pages/Auth";
 import { AppListPage, Dashboard, VPSListPage } from "./pages/Dashboard";
@@ -9,6 +9,7 @@ import { NewApp } from "./pages/NewApp";
 import { AppDetail } from "./pages/AppDetail";
 import { Remote } from "./pages/Remote";
 import { ActivityPage } from "./pages/Activity";
+import { AccountPage } from "./pages/Account";
 import { SetupWizard, wizardActive } from "./pages/SetupWizard";
 import { Tag } from "./components/ui";
 
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/apps/:id" element={<AppDetail />} />
           <Route path="/remote" element={<Remote />} />
           <Route path="/activity" element={<ActivityPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -56,7 +58,6 @@ const navItems = [
 
 function Header({ username }: { username?: string }) {
   const qc = useQueryClient();
-  const nav = useNavigate();
   const system = useQuery({ queryKey: ["system"], queryFn: api.system, refetchInterval: 15000 });
   const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote, refetchInterval: 15000 });
   const docker = system.data?.docker;
@@ -104,18 +105,20 @@ function Header({ username }: { username?: string }) {
               </Tag>
             </Link>
           )}
-          <span className="hidden items-center gap-2 text-ink-2 sm:inline-flex">
+          <Link to="/account" title="Account and two-factor sign-in" className="inline-flex items-center gap-2 text-ink-2 no-underline hover:text-ink">
             <span className="grid size-5 place-items-center rounded-[2px] bg-[#1c4a7a] text-[11px] font-semibold uppercase">{username?.[0] ?? "?"}</span>
-            {username}
-          </span>
+            <span className="hidden sm:inline">{username}</span>
+            <span className="sr-only sm:hidden">Account</span>
+          </Link>
           <button
             type="button"
             className="h-8 cursor-pointer rounded-bp border border-[#2f5f92] bg-transparent px-2.5 text-ink hover:bg-white/5"
             onClick={async () => {
-              await api.logout();
+              await api.logout().catch(() => {});
+              // A full reload drops every cached query and open connection
+              // (terminals, live stats), then shows the sign-in page.
               qc.clear();
-              nav("/");
-              qc.invalidateQueries();
+              window.location.replace("/");
             }}
           >
             Log out

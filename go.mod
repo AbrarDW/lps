@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	fyne.io/systray v1.12.2
+	github.com/coder/websocket v1.8.13
 	github.com/containerd/errdefs v1.0.0
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/moby/moby/api v1.57.0
@@ -12,11 +13,11 @@ require (
 	golang.org/x/crypto v0.40.0
 	golang.org/x/sys v0.34.0
 	modernc.org/sqlite v1.38.0
+	rsc.io/qr v0.2.0
 )
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/coder/websocket v1.8.13 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.8.2 // indirect

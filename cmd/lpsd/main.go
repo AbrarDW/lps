@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/abrardw/lps/internal/app"
 	"github.com/abrardw/lps/internal/platform"
+	"github.com/abrardw/lps/internal/store"
 )
 
 var version = "dev" // set with -ldflags "-X main.version=..."
@@ -25,6 +27,11 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		if err := serve(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "lpsd:", err)
+			os.Exit(1)
+		}
+	case "disable-2fa":
+		if err := disable2FA(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "lpsd:", err)
 			os.Exit(1)
 		}
@@ -44,10 +51,58 @@ func usage() {
 
 Usage:
   lpsd serve [flags]   start the dashboard and API
+  lpsd disable-2fa     turn off two-factor sign-in (if you lost your phone
+                       and your recovery codes); run it on this PC
   lpsd version         print the version
 
 Run "lpsd serve -h" for flags.
 `)
+}
+
+// disable2FA turns two-factor sign-in off for an account. Being able to run
+// it on this PC (with access to LPS's data folder) is the proof of ownership.
+func disable2FA(args []string) error {
+	fs := flag.NewFlagSet("disable-2fa", flag.ExitOnError)
+	dataDir := fs.String("data", platform.DefaultDataDir(), "LPS data directory")
+	user := fs.String("user", "", "account name (default: the only account)")
+	fs.Parse(args)
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, filepath.Join(*dataDir, "lps.db"))
+	if err != nil {
+		return fmt.Errorf("open database in %s: %w", *dataDir, err)
+	}
+	defer st.Close()
+	name := *user
+	if name == "" {
+		n, err := st.CountUsers(ctx)
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("there are %d accounts; pass -user NAME", n)
+		}
+		names, err := st.Usernames(ctx)
+		if err != nil {
+			return err
+		}
+		name = names[0]
+	}
+	u, err := st.UserByUsername(ctx, name)
+	if err != nil {
+		return fmt.Errorf("account %q: %w", name, err)
+	}
+	if !u.TwoFactor {
+		fmt.Printf("Two-factor sign-in is already off for %s.\n", u.Username)
+		return nil
+	}
+	if err := st.DisableTOTP(ctx, u.ID); err != nil {
+		return err
+	}
+	_ = st.AddEvent(ctx, &store.Event{Level: store.LevelWarning, Kind: "auth.2fa_off", Subject: "auth",
+		Message: fmt.Sprintf("Two-factor sign-in turned off for %s from this PC (lpsd disable-2fa)", u.Username)})
+	fmt.Printf("Two-factor sign-in is now off for %s. Sign in with your password, then turn it on again under Account.\n", u.Username)
+	return nil
 }
 
 func serve(args []string) error {

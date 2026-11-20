@@ -2,7 +2,10 @@
 
 export type State = "running" | "stopped" | "missing" | "provisioning" | "error";
 
-export interface User { id: number; username: string; createdAt: string }
+export interface User { id: number; username: string; createdAt: string; twoFactor?: boolean }
+
+/** Password accepted, but a two-factor code is needed to finish signing in. */
+export interface TwoFactorChallenge { twoFactorRequired: true; ticket: string }
 
 export interface VPS {
   id: number;
@@ -212,7 +215,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   setupStatus: () => request<{ needsSetup: boolean }>("GET", "/setup"),
   setup: (username: string, password: string) => request<User>("POST", "/setup", { username, password }),
-  login: (username: string, password: string) => request<User>("POST", "/auth/login", { username, password }),
+  login: (username: string, password: string) => request<User | TwoFactorChallenge>("POST", "/auth/login", { username, password }),
+  login2fa: (ticket: string, code: string) => request<User>("POST", "/auth/login/2fa", { ticket, code }),
+  twoFactor: () => request<{ enabled: boolean; recoveryCodesLeft: number }>("GET", "/auth/2fa"),
+  setup2fa: (password: string) => request<{ secret: string; uri: string; qr: string }>("POST", "/auth/2fa/setup", { password }),
+  enable2fa: (code: string) => request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/enable", { code }),
+  disable2fa: (password: string, code: string) => request<void>("POST", "/auth/2fa/disable", { password, code }),
+  newRecoveryCodes: (password: string, code: string) => request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/recovery-codes", { password, code }),
   logout: () => request<void>("POST", "/auth/logout"),
   me: () => request<User>("GET", "/auth/me"),
   system: () => request<SystemInfo>("GET", "/system"),
