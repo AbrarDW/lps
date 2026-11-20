@@ -114,6 +114,19 @@ export interface EnvVarView { name: string; value?: string; secret: boolean; has
 /** keep: for a secret, keep the stored value (send value ""). */
 export interface EnvVarInput { name: string; value: string; secret: boolean; keep?: boolean }
 
+export interface UpdateInfo {
+  current: string;
+  comparable: boolean;
+  enabled: boolean;
+  latest?: { version: string; tag: string; name: string; notes: string; url: string; published: string; installer?: { name: string; size: number } };
+  available: boolean;
+  checkedAt?: string;
+  error?: string;
+  canInstall: boolean;
+  installing?: "downloading" | "starting";
+  installError?: string;
+}
+
 export interface Snapshot {
   id: number;
   vpsId: number;
@@ -301,6 +314,10 @@ export const api = {
 
   setupChecks: () => request<SetupChecks>("GET", "/setup/checks"),
   setupAction: (action: string) => request<{ status: string }>("POST", `/setup/actions/${action}`),
+  update: () => request<UpdateInfo>("GET", "/system/update"),
+  checkUpdate: () => request<UpdateInfo>("POST", "/system/update/check"),
+  setUpdateCheck: (enabled: boolean) => request<UpdateInfo>("PUT", "/system/update", { enabled }),
+  installUpdate: () => request<UpdateInfo>("POST", "/system/update/install"),
   autostart: () => request<AutostartState>("GET", "/system/autostart"),
   setAutostart: (enabled: boolean) => request<AutostartState>("PUT", "/system/autostart", { enabled }),
 

@@ -29,6 +29,8 @@ The wizard checks everything LPS needs and tells you how to fix what's missing: 
 
 **Day to day:** right-click the **LPS tray icon** for *Open dashboard*, *Start with Windows* and *Quit LPS*. Quitting LPS doesn't stop running VPS or apps; they keep running in Docker Desktop.
 
+**Updates:** LPS checks GitHub for a new release twice a day and shows a banner when there is one. Click **Install update**: LPS downloads the new installer, checks it against its published SHA-256, installs it silently and restarts in a few seconds. VPS and apps keep running in Docker meanwhile. Turn automatic checks off, or check now, under **Account → Updates** (`lpsd serve -no-update-check` also turns them off). The check only asks GitHub for the latest release; nothing about you or your PC is sent.
+
 **Uninstall:** Windows Settings → Apps → *LPS - Local Personal Server*. Your data (`%ProgramData%\LPS`) is kept so a reinstall picks up your VPS and apps; delete that folder to remove everything.
 
 ### Download blocked?
@@ -473,7 +475,7 @@ flowchart LR
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name"]
     m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA →<br/>Cloudflare Quick Tunnel"]
     m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots"]
-    m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>signing, auto-update"]
+    m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
 
@@ -481,7 +483,7 @@ flowchart LR
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). Next: real hostnames per app through Tailscale Services or Cloudflare Tunnel.
 3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. Next: Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
 4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). Next: scheduled snapshots and exporting them as files.
-5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). Next: auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
+5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. Next: Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License
 

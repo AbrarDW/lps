@@ -17,6 +17,8 @@ type systemHooks struct {
 	startDocker func() error
 	canStart    func() bool // whether StartDocker can work on this machine
 	autostart   platform.Autostart
+	// startInstaller runs a downloaded LPS installer (Windows).
+	startInstaller func(path string) error
 }
 
 func defaultHooks(dataDir string) systemHooks {
@@ -24,10 +26,11 @@ func defaultHooks(dataDir string) systemHooks {
 		dataDir = "."
 	}
 	return systemHooks{
-		checks:      func(ctx context.Context) []platform.Check { return platform.SystemChecks(ctx, dataDir) },
-		startDocker: platform.StartDocker,
-		canStart:    func() bool { return platform.DockerDesktopPath() != "" },
-		autostart:   platform.NewAutostart(),
+		checks:         func(ctx context.Context) []platform.Check { return platform.SystemChecks(ctx, dataDir) },
+		startDocker:    platform.StartDocker,
+		canStart:       func() bool { return platform.DockerDesktopPath() != "" },
+		autostart:      platform.NewAutostart(),
+		startInstaller: platform.StartInstaller,
 	}
 }
 

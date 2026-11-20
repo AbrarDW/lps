@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { Button, Callout, Card, CopyField, ErrorBox, Field, Input, PageHeader, Tag } from "../components/ui";
+import { UpdatesCard } from "../components/Updates";
 
 /** Shows freshly made recovery codes once, with copy and download. */
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
@@ -224,6 +225,7 @@ export function AccountPage() {
           </p>
         </div>
       </Card>
+      <UpdatesCard />
     </>
   );
 }

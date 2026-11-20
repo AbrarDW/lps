@@ -19,6 +19,7 @@ import (
 	"github.com/abrardw/lps/internal/platform"
 	"github.com/abrardw/lps/internal/store"
 	"github.com/abrardw/lps/internal/tunnel"
+	"github.com/abrardw/lps/internal/update"
 	"github.com/abrardw/lps/web"
 )
 
@@ -36,6 +37,11 @@ type Options struct {
 	Logger        *slog.Logger
 	// OnReady is called once the dashboard is accepting connections.
 	OnReady func(url string)
+	// Quit stops the program around Run (the desktop app's tray). Setting it
+	// lets LPS install updates: it starts the installer, then quits.
+	Quit func()
+	// NoUpdateCheck turns off checking GitHub for new releases.
+	NoUpdateCheck bool
 }
 
 // Run starts LPS and blocks until ctx is cancelled or the server fails.
@@ -85,6 +91,10 @@ func Run(ctx context.Context, o Options) error {
 	cfg.SecureCookies = o.SecureCookies
 	cfg.Version = o.Version
 	cfg.DataDir = o.DataDir
+	cfg.Quit = o.Quit
+	if !o.NoUpdateCheck {
+		cfg.UpdateRepo = update.DefaultRepo
+	}
 	if _, p, err := net.SplitHostPort(o.Addr); err == nil {
 		cfg.DashboardPort, _ = strconv.Atoi(p)
 	}
