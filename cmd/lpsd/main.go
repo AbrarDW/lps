@@ -112,12 +112,13 @@ func serve(args []string) error {
 	bindIP := fs.String("bind-ip", "127.0.0.1", "host IP that VPS SSH and app ports are published on (0.0.0.0 = whole LAN)")
 	secure := fs.Bool("secure-cookies", false, "mark session cookies Secure (set when the dashboard is reached over HTTPS)")
 	noRemote := fs.Bool("no-remote", false, "disable remote access (Tailscale) integration")
+	noUpdate := fs.Bool("no-update-check", false, "never check GitHub for new LPS releases")
 	fs.Parse(args)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return app.Run(ctx, app.Options{
-		Addr: *addr, DataDir: *dataDir, BindIP: *bindIP, SecureCookies: *secure, NoRemote: *noRemote,
+		Addr: *addr, DataDir: *dataDir, BindIP: *bindIP, SecureCookies: *secure, NoRemote: *noRemote, NoUpdateCheck: *noUpdate,
 		Version: version,
 		Logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
 	})

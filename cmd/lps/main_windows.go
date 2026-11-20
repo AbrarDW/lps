@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 
 	"fyne.io/systray"
 	"golang.org/x/sys/windows"
@@ -51,12 +52,24 @@ func main() {
 		return
 	}
 
+	// After an update the installer starts us with --after-update: the
+	// dashboard is already open and reconnects by itself, so no new tab.
+	afterUpdate := slices.Contains(os.Args[1:], "--after-update")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	serverDone := make(chan error, 1)
 	go func() {
 		serverDone <- app.Run(ctx, app.Options{
 			DataDir: dataDir, Version: version, Logger: logger,
-			OnReady: func(u string) { url = u; openBrowser(u) },
+			OnReady: func(u string) {
+				url = u
+				if !afterUpdate {
+					openBrowser(u)
+				}
+			},
+			// Installing an update: the installer is running; quit so it can
+			// replace our files. It starts the new version when done.
+			Quit: func() { systray.Quit() },
 		})
 	}()
 

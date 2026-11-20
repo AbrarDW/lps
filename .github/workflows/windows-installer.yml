@@ -145,6 +145,22 @@ jobs:
           if (-not $run) { throw "autostart Run value not created" }
           Write-Host "Autostart: $($run.LPS)"
           & (Join-Path $dir 'lpsd.exe') version
+
+          # In-app update: the dashboard runs the new installer silently over
+          # the existing install with /RELAUNCH=1; LPS must come back by itself.
+          Write-Host "Update over the existing install with /RELAUNCH=1"
+          Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/RELAUNCH=1' -Wait
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            try { if ((Invoke-WebRequest http://127.0.0.1:7070/api/health -UseBasicParsing).StatusCode -eq 200) { $ok = $true; break } } catch {}
+            Start-Sleep -Seconds 1
+          }
+          $proc = Get-Process lps -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir*" }
+          if (-not $ok -or -not $proc) { Get-Content "$env:ProgramData\LPS\lps.log" -ErrorAction SilentlyContinue; throw "LPS did not restart after the silent update" }
+          Write-Host "LPS restarted after the update (pid $($proc.Id))"
+          $proc | Stop-Process -Force
+          Start-Sleep -Seconds 2
+
           Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
           Start-Sleep -Seconds 3
           if (Test-Path (Join-Path $dir 'lps.exe')) { throw "lps.exe still present after uninstall" }

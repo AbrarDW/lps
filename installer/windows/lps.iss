@@ -63,6 +63,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\lps.exe"; Description: "Launch LPS and open the setup page"; Flags: nowait postinstall skipifsilent
+; Updates started from the LPS dashboard run silently with /RELAUNCH=1: start
+; the new version again (without opening another browser tab).
+Filename: "{app}\lps.exe"; Parameters: "--after-update"; Flags: nowait; Check: RelaunchAfterUpdate
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM lps.exe"; Flags: runhidden; RunOnceId: "StopLPS"
@@ -81,6 +84,11 @@ begin
   { Upgrades: stop the running copy so its files can be replaced. }
   StopLPS();
   Result := '';
+end;
+
+function RelaunchAfterUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
 end;
 
 function DockerDesktopInstalled(): Boolean;

@@ -20,6 +20,7 @@ import (
 	"github.com/abrardw/lps/internal/docker"
 	"github.com/abrardw/lps/internal/store"
 	"github.com/abrardw/lps/internal/tunnel"
+	"github.com/abrardw/lps/internal/update"
 )
 
 // Config tunes the server.
@@ -42,6 +43,12 @@ type Config struct {
 	// (GatewayHandler); remote access publishes it on appsRemotePort.
 	// 0 = no gateway.
 	GatewayPort int
+	// UpdateRepo is the GitHub repository whose releases LPS checks for
+	// updates ("" = never check, as in tests).
+	UpdateRepo string
+	// Quit stops the running LPS (the Windows desktop app sets it); needed to
+	// install updates.
+	Quit func()
 }
 
 // DefaultConfig returns sensible defaults.
@@ -85,6 +92,8 @@ type Server struct {
 	gitTried  map[int64]string        // last commit auto-deploy tried per app
 	gitKick   chan struct{}
 	snapping  map[int64]bool // VPSes a snapshot is being taken of
+	updater   *update.Checker
+	updates   updateState
 }
 
 type taskInfo struct {
@@ -130,6 +139,12 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 	}
 	s.gitTried = map[int64]string{}
 	s.snapping = map[int64]bool{}
+	s.updates.kick = make(chan struct{}, 1)
+	if cfg.UpdateRepo != "" {
+		s.updater = update.NewChecker(cfg.UpdateRepo)
+		s.wg.Add(1)
+		go s.updateLoop()
+	}
 	s.gitKick = make(chan struct{}, 1)
 	s.wg.Add(3)
 	go s.vpsAppsLoop()
@@ -176,6 +191,10 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/system", s.handleSystem)
 			r.Get("/system/autostart", s.handleGetAutostart)
 			r.Put("/system/autostart", s.handleSetAutostart)
+			r.Get("/system/update", s.handleGetUpdate)
+			r.Put("/system/update", s.handleSetUpdate)
+			r.Post("/system/update/check", s.handleCheckUpdate)
+			r.Post("/system/update/install", s.handleInstallUpdate)
 
 			r.Get("/vps", s.handleListVPS)
 			r.Post("/vps", s.handleCreateVPS)

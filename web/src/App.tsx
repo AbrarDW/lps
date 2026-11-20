@@ -10,6 +10,7 @@ import { AppDetail } from "./pages/AppDetail";
 import { Remote } from "./pages/Remote";
 import { ActivityPage } from "./pages/Activity";
 import { AccountPage } from "./pages/Account";
+import { UpdateBanner } from "./components/Updates";
 import { SetupWizard, wizardActive } from "./pages/SetupWizard";
 import { Tag } from "./components/ui";
 
@@ -30,6 +31,7 @@ export default function App() {
     <div className="min-h-screen">
       <Header username={me.data?.username} />
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pt-6 pb-12 sm:px-6">
+        <UpdateBanner />
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/vps" element={<VPSListPage />} />
