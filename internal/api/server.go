@@ -38,6 +38,10 @@ type Config struct {
 	DashboardPort int
 	// DataDir is where lpsd keeps its database (used for the disk-space check).
 	DataDir string
+	// GatewayPort is the local port of the path-based apps gateway
+	// (GatewayHandler); remote access publishes it on appsRemotePort.
+	// 0 = no gateway.
+	GatewayPort int
 }
 
 // DefaultConfig returns sensible defaults.
@@ -195,7 +199,13 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	r.Handle("/*", s.uiHandler())
-	return r
+	// <app>.localhost hosts reach the app, everything else the dashboard.
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if s.serveAppByHost(w, req) {
+			return
+		}
+		r.ServeHTTP(w, req)
+	})
 }
 
 // ---- middleware ----

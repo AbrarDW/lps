@@ -53,6 +53,10 @@ export interface AppItem {
   /** 0 = the app runs in its own container. */
   vpsId: number;
   vpsName?: string;
+  /** Name-based address on this PC: http://<app>.localhost:7070 */
+  localUrl?: string;
+  /** Name-based address on the tailnet: https://<pc>.ts.net:8080/<app>/ */
+  pathUrl?: string;
   sourceKind: "pc" | "vps";
   vpsPath: string;
   packages: string;

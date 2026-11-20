@@ -33,6 +33,10 @@ type appView struct {
 	DockerfileSource string `json:"dockerfileSource"`
 	// VPSName is the VPS the app runs in, if any.
 	VPSName string `json:"vpsName,omitempty"`
+	// LocalURL is the app's name-based address on this PC (http://<app>.localhost:7070).
+	LocalURL string `json:"localUrl,omitempty"`
+	// PathURL is its name-based address on the tailnet (https://<pc>.ts.net:8080/<app>/).
+	PathURL string `json:"pathUrl,omitempty"`
 }
 
 // maxDockerfile caps a stored Dockerfile (requests are limited to 64 KiB).
@@ -113,9 +117,13 @@ func (s *Server) appView(r *http.Request, a *store.App) appView {
 			view.VPSName = v.Name
 		}
 	}
+	view.LocalURL = s.localAppURL(a)
 	if dns, active := s.remoteSnapshot(r.Context()); dns != "" {
 		if e, ok := active[a.HostPort]; ok {
 			view.RemoteURL = remoteURL(dns, toExposure(e))
+		}
+		if e, ok := active[appsRemotePort]; ok && e.LocalPort == s.cfg.GatewayPort {
+			view.PathURL = remoteURL(dns, toExposure(e)) + "/" + a.Name + "/"
 		}
 		if e, ok := active[a.PublicPort]; ok && a.PublicPort > 0 && e.Public {
 			view.PublicURL = remoteURL(dns, toExposure(e))

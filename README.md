@@ -168,6 +168,19 @@ flowchart LR
 
 A VPS only publishes its SSH port, so each VPS app gets a tiny relay container that publishes the app's port on the PC. Local, tailnet and public links work as for any app. A VPS can't be deleted while apps run in it, and two apps in one VPS need different ports.
 
+### App addresses by name
+
+Every app can be opened by its name instead of a port number:
+
+| From | Address | Notes |
+|---|---|---|
+| This PC | `http://myapp.localhost:7070` | Browsers send `*.localhost` to this PC by themselves; nothing to set up. |
+| Your devices (Tailscale) | `https://your-pc.ts.net:8080/myapp/` | The app sees requests without the `/myapp` prefix (also sent in `X-Forwarded-Prefix`), and its redirects stay inside `/myapp/`. |
+
+The port addresses (`http://localhost:8100`, `https://your-pc.ts.net:8100`) keep working. Use them for an app that breaks under a path prefix: many single-page apps load files from `/` unless built with a base path (Vite `base`, CRA `homepage`, Next.js `basePath`).
+
+Apps never share an origin with the dashboard: the name addresses live on `*.localhost` hosts and on their own port (`:8080`), and LPS strips its session cookie from every request it passes to an app. So an app's scripts can't act as you in LPS.
+
 ### Environment variables and secrets
 
 Every app has an **Environment** tab. Add variables one by one or **paste a `.env` file**, mark the ones that are **secret**, and press **Save & redeploy**.
@@ -381,6 +394,7 @@ npm, yarn and pnpm are picked from the lockfile. You can switch templates or edi
 | `7070` | Dashboard and API | `127.0.0.1` |
 | `2201–2299` | SSH into each VPS | `127.0.0.1` (`-bind-ip`) |
 | `8100–8199` | Each app's HTTP port (for VPS apps, via its relay) | `127.0.0.1` (`-bind-ip`) |
+| `7071` | Apps by name (`/<app>/`), published on the tailnet as `:8080` | `127.0.0.1` (next port after the dashboard, else any free port) |
 
 ## Development
 
@@ -424,7 +438,7 @@ Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works
 ```mermaid
 flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
-    m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>hostname per app"]
+    m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name"]
     m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel,<br/>2FA"]
     m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>git-URL deploys"]
     m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>signing, auto-update"]
@@ -432,7 +446,7 @@ flowchart LR
 ```
 
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
-2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. Next: a reverse proxy (Caddy) with a hostname per app and per VPS HTTP port.
+2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). Next: real hostnames per app through Tailscale Services or Cloudflare Tunnel.
 3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). Next: two-factor sign-in (TOTP), Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
 4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. Next: git-URL deploys and push-to-deploy webhooks, VPS snapshots.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). Next: auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.

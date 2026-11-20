@@ -123,9 +123,24 @@ export function AppDetail() {
 
       {/* Where the app can be reached */}
       <section aria-label="Addresses" className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] overflow-hidden rounded-bp border border-line bg-panel">
-        <Endpoint label="On this PC" href={running ? url : undefined} text={url} />
-        {a.remoteUrl ? (
-          <Endpoint label="Your devices · tailnet" href={a.remoteUrl} text={a.remoteUrl} note="Tailscale devices only" />
+        <Endpoint
+          label="On this PC"
+          href={running ? (a.localUrl ?? url) : undefined}
+          text={a.localUrl ?? url}
+          alt={a.localUrl ? { href: running ? url : undefined, text: url } : undefined}
+        />
+        {a.pathUrl || a.remoteUrl ? (
+          <Endpoint
+            label="Your devices · tailnet"
+            href={a.pathUrl ?? a.remoteUrl}
+            text={(a.pathUrl ?? a.remoteUrl)!}
+            alt={a.pathUrl && a.remoteUrl ? { href: a.remoteUrl, text: a.remoteUrl } : undefined}
+            note={
+              a.pathUrl
+                ? "Tailscale devices only. If the app breaks under /" + a.name + "/ (it expects to run at /), use the port address above."
+                : "Tailscale devices only"
+            }
+          />
         ) : (
           <div className="flex flex-col gap-1 border-line px-4 py-3">
             <span className="label-mono text-[10px] text-ink-faint">Your devices · tailnet</span>
@@ -287,7 +302,22 @@ export function AppDetail() {
   );
 }
 
-function Endpoint({ label, href, text, note, warn }: { label: string; href?: string; text: string; note?: string; warn?: boolean }) {
+function Endpoint({
+  label,
+  href,
+  text,
+  note,
+  warn,
+  alt,
+}: {
+  label: string;
+  href?: string;
+  text: string;
+  note?: string;
+  warn?: boolean;
+  /** A second address for the same place (the port-based one). */
+  alt?: { href?: string; text: string };
+}) {
   return (
     <div className={`flex min-w-0 flex-col gap-1 border-r border-line px-4 py-3 last:border-r-0 ${warn ? "bg-warning/6" : ""}`}>
       <span className={`label-mono text-[10px] ${warn ? "text-warning-ink" : "text-ink-faint"}`}>{label}</span>
@@ -298,6 +328,14 @@ function Endpoint({ label, href, text, note, warn }: { label: string; href?: str
       ) : (
         <span className="font-mono text-[13px] break-all text-ink-muted">{text}</span>
       )}
+      {alt &&
+        (alt.href ? (
+          <a href={alt.href} target="_blank" rel="noreferrer" className="font-mono text-[11px] break-all text-ink-muted hover:text-ink">
+            {alt.text}
+          </a>
+        ) : (
+          <span className="font-mono text-[11px] break-all text-ink-faint">{alt.text}</span>
+        ))}
       {note && <span className="text-[11px] text-ink-faint">{note}</span>}
     </div>
   );

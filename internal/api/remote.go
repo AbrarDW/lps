@@ -83,6 +83,9 @@ func (s *Server) desiredExposures(ctx context.Context) (map[int]desiredExposure,
 	if err != nil {
 		return nil, err
 	}
+	if s.cfg.GatewayPort > 0 && len(apps) > 0 {
+		add(tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: appsRemotePort, LocalPort: s.cfg.GatewayPort}, "Apps by name (/<app>/)")
+	}
 	for _, a := range apps {
 		add(tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: a.HostPort, LocalPort: a.HostPort}, "App "+a.Name)
 		// Funnel only ever applies to apps, never the dashboard or SSH.
