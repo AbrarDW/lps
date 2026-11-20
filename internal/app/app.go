@@ -62,6 +62,9 @@ func Run(ctx context.Context, o Options) error {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer st.Close()
+	if err := st.FailStaleSnapshots(ctx); err != nil {
+		return err
+	}
 	if err := st.FailStaleDeployments(ctx); err != nil {
 		return err
 	}

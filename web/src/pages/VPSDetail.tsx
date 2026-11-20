@@ -18,6 +18,7 @@ import {
 } from "../components/ui";
 
 import { ActivityList } from "../components/Activity";
+import { SnapshotsCard } from "../components/SnapshotsCard";
 import { UsageCard, cpuShare, formatBytes, useStats } from "../components/Usage";
 
 // xterm.js is only downloaded when a terminal is opened.
@@ -33,7 +34,7 @@ export function VPSDetail() {
   const vps = useQuery({
     queryKey: ["vps", id],
     queryFn: () => api.getVPS(id),
-    refetchInterval: (q) => (q.state.data?.state === "provisioning" ? 2000 : 5000),
+    refetchInterval: (q) => (q.state.data?.state === "provisioning" || q.state.data?.state === "restoring" ? 2000 : 5000),
   });
 
   const refresh = () => {
@@ -54,7 +55,7 @@ export function VPSDetail() {
   const v = vps.data;
   const host = displayHost(system.data?.bindIp);
   const sshCmd = `ssh ${v.sshUser}@${host} -p ${v.sshPort}`;
-  const busy = v.state === "provisioning" || action.isPending;
+  const busy = v.state === "provisioning" || v.state === "restoring" || action.isPending;
   const usage = stats.data?.vps[String(v.id)];
 
   return (
@@ -94,6 +95,12 @@ export function VPSDetail() {
           <b>Provisioning…</b> The first VPS builds the Ubuntu image, which can take a few minutes.
         </Callout>
       )}
+      {v.state === "restoring" && (
+        <Callout>
+          <b>Restoring a snapshot…</b> LPS saves the current state first, then restarts the VPS from the snapshot. Open terminals and SSH sessions
+          are disconnected.
+        </Callout>
+      )}
       {v.provisionLog && <LogView text={v.provisionLog} />}
 
       <section className="flex flex-wrap items-start gap-5">
@@ -106,6 +113,7 @@ export function VPSDetail() {
               running={v.state === "running"}
               note={v.apps.length > 0 ? "Includes the apps running in this VPS." : undefined}
             />
+            <SnapshotsCard vps={v} />
             <Card title="Activity" flush>
               <ActivityList subject="vps" id={v.id} limit={8} showLinks={false} empty="Nothing has happened on this VPS yet." />
             </Card>
@@ -195,9 +203,9 @@ export function VPSDetail() {
               <Button
                 variant="danger"
                 className="self-start"
-                disabled={del.isPending || v.state === "provisioning" || v.apps.length > 0}
+                disabled={del.isPending || busy || v.apps.length > 0}
                 onClick={() => {
-                  if (confirm(`Delete VPS "${v.name}"?${keepData ? "" : " All files in /home will be lost."}`)) del.mutate();
+                  if (confirm(`Delete VPS "${v.name}"?${keepData ? "" : " All files in /home will be lost."} Its snapshots are deleted too.`)) del.mutate();
                 }}
               >
                 Delete VPS

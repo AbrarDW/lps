@@ -42,6 +42,8 @@ type fakeEngine struct {
 	cpuNanos      map[string]uint64
 	cpuAt         map[string]time.Time
 	appSpecs      []docker.AppSpec
+	images        map[string]bool
+	copies        []string
 }
 
 func newFake() *fakeEngine {

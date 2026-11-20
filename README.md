@@ -198,6 +198,15 @@ Every app has an **Environment** tab. Add variables one by one or **paste a `.en
 - **Apps in a VPS:** they're given to the install and start commands. LPS sets `PORT`, `HOST` and `HOME` itself, so those names are refused there; names starting with `LPS_` are reserved everywhere.
 - **Secret values** are never sent back to the browser after saving, and never appear in deploy logs or the activity feed (only the variable names do). They are stored in LPS's database on this PC, and anyone who can run `docker inspect` on this PC can read a container's environment.
 
+### Snapshots
+
+Each VPS page has a **Snapshots** card. A snapshot saves **everything** in the VPS: installed software and settings (the container's files, saved as an image) and `/home` (copied). Snapshots stay in Docker on this PC.
+
+- **Take snapshot** while the VPS runs; it is paused only for the moment its files are saved. For something that writes constantly (a database), stop the VPS first for a perfectly consistent copy.
+- **Restore** puts the VPS back exactly as it was: files, users, passwords, SSH keys and host keys. LPS takes a snapshot of the current state first (*Before restoring “…”*), so a restore can be undone. Apps running in the VPS come back by themselves.
+- **New VPS from it** makes a copy with a new name and SSH port.
+- **Delete** removes a snapshot. Deleting a VPS deletes its snapshots too.
+
 ### VPS lifecycle
 
 ```mermaid
@@ -463,7 +472,7 @@ flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name"]
     m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA →<br/>Cloudflare Quick Tunnel"]
-    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys"]
+    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots"]
     m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>signing, auto-update"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
@@ -471,7 +480,7 @@ flowchart LR
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). Next: real hostnames per app through Tailscale Services or Cloudflare Tunnel.
 3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. Next: Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
-4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy. Next: VPS snapshots.
+4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). Next: scheduled snapshots and exporting them as files.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). Next: auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License

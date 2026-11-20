@@ -17,15 +17,17 @@ type VPS struct {
 	MemoryMB     int       `json:"memoryMb"`
 	ContainerID  string    `json:"containerId"`
 	CreatedAt    time.Time `json:"createdAt"`
+	// Image the VPS runs from after a restore or copy ("" = stock image).
+	Image string `json:"-"`
 }
 
-const vpsCols = `id, name, ssh_user, ssh_port, ssh_public_key, cpus, memory_mb, container_id, created_at`
+const vpsCols = `id, name, ssh_user, ssh_port, ssh_public_key, cpus, memory_mb, container_id, created_at, image`
 
 type scanner interface{ Scan(...any) error }
 
 func scanVPS(r scanner) (*VPS, error) {
 	v := &VPS{}
-	err := r.Scan(&v.ID, &v.Name, &v.SSHUser, &v.SSHPort, &v.SSHPublicKey, &v.CPUs, &v.MemoryMB, &v.ContainerID, &v.CreatedAt)
+	err := r.Scan(&v.ID, &v.Name, &v.SSHUser, &v.SSHPort, &v.SSHPublicKey, &v.CPUs, &v.MemoryMB, &v.ContainerID, &v.CreatedAt, &v.Image)
 	return v, err
 }
 
