@@ -118,6 +118,9 @@ func (s *Server) vpsView(r *http.Request, v *store.VPS) vpsView {
 	switch {
 	case t != nil && t.running:
 		view.State = stateProvisioning
+		if t.kind != "" {
+			view.State = t.kind
+		}
 	case t != nil && t.err != "":
 		view.State, view.Error = stateError, t.err
 	default:
@@ -298,6 +301,10 @@ func (s *Server) handleDeleteVPS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "this VPS runs apps; delete them first: "+strings.Join(names, ", "))
 		return
 	}
+	if s.snapshotBusy(v.ID) {
+		writeError(w, http.StatusConflict, "a snapshot of this VPS is being taken; wait for it to finish")
+		return
+	}
 	if err := s.engine.Remove(r.Context(), v.ContainerID); err != nil {
 		writeError(w, http.StatusBadGateway, "remove container: "+err.Error())
 		return
@@ -309,6 +316,13 @@ func (s *Server) handleDeleteVPS(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, "remove volume: "+err.Error())
 			return
 		}
+	}
+	if err := s.deleteVPSSnapshots(r.Context(), v); err != nil {
+		writeError(w, http.StatusBadGateway, "remove snapshots: "+err.Error())
+		return
+	}
+	if v.Image != "" {
+		_ = s.engine.RemoveSnapshotImage(r.Context(), v.Image)
 	}
 	if err := s.store.DeleteVPS(r.Context(), v.ID); err != nil {
 		s.internalError(w, err)

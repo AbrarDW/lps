@@ -84,10 +84,12 @@ type Server struct {
 	tickets   map[string]*loginTicket // sign-ins waiting for a 2FA code
 	gitTried  map[int64]string        // last commit auto-deploy tried per app
 	gitKick   chan struct{}
+	snapping  map[int64]bool // VPSes a snapshot is being taken of
 }
 
 type taskInfo struct {
 	running bool
+	kind    string // "" = provisioning, stateRestoring = restoring a snapshot
 	err     string
 	log     *syncBuffer // provisioning output (image build etc.)
 }
@@ -127,6 +129,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 		go s.remoteLoop()
 	}
 	s.gitTried = map[int64]string{}
+	s.snapping = map[int64]bool{}
 	s.gitKick = make(chan struct{}, 1)
 	s.wg.Add(3)
 	go s.vpsAppsLoop()
@@ -182,6 +185,11 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/vps/{id}/stop", s.handleVPSAction("stop"))
 			r.Get("/vps/{id}/logs", s.handleVPSLogs)
 			r.Get("/vps/{id}/terminal", s.handleVPSTerminal)
+			r.Get("/vps/{id}/snapshots", s.handleListSnapshots)
+			r.Post("/vps/{id}/snapshots", s.handleCreateSnapshot)
+			r.Post("/vps/{id}/snapshots/{sid}/restore", s.handleRestoreSnapshot)
+			r.Post("/vps/{id}/snapshots/{sid}/clone", s.handleCloneSnapshot)
+			r.Delete("/vps/{id}/snapshots/{sid}", s.handleDeleteSnapshot)
 
 			r.Get("/apps", s.handleListApps)
 			r.Post("/apps", s.handleCreateApp)

@@ -22,6 +22,9 @@ type VPSSpec struct {
 	SSHPort   int     // host port mapped to container port 22
 	CPUs      float64 // 0 = unlimited
 	MemoryMB  int     // 0 = unlimited
+	// Image to run instead of the stock VPS image (a snapshot). Its users,
+	// SSH keys and host keys are already set up, so no first-boot setup runs.
+	Image string
 }
 
 // AppSpec describes an app container built from a project directory.
@@ -89,6 +92,17 @@ type Engine interface {
 	Usage(ctx context.Context, id string) (Usage, error)
 	// HostInfo reports the CPUs and memory available to containers.
 	HostInfo(ctx context.Context) (HostInfo, error)
+
+	// Commit saves a container's filesystem (not its volumes) as image ref.
+	Commit(ctx context.Context, id, ref, comment string) error
+	// ImageSize returns an image's size in bytes.
+	ImageSize(ctx context.Context, ref string) (int64, error)
+	// CopyVolume makes volume to an exact copy of from and returns its size.
+	CopyVolume(ctx context.Context, from, to string, labels map[string]string) (int64, error)
+	// TagImage gives an image another name.
+	TagImage(ctx context.Context, src, dst string) error
+	// RemoveSnapshotImage deletes a snapshot image; a missing one is not an error.
+	RemoveSnapshotImage(ctx context.Context, ref string) error
 }
 
 // VPSVolumeName is the persistent /home volume for a VPS.

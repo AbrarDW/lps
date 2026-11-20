@@ -1,6 +1,6 @@
 // Typed client for the lpsd REST API.
 
-export type State = "running" | "stopped" | "missing" | "provisioning" | "error";
+export type State = "running" | "stopped" | "missing" | "provisioning" | "restoring" | "error";
 
 export interface User { id: number; username: string; createdAt: string; twoFactor?: boolean }
 
@@ -113,6 +113,17 @@ export interface AppDockerfile {
 export interface EnvVarView { name: string; value?: string; secret: boolean; hasValue: boolean }
 /** keep: for a secret, keep the stored value (send value ""). */
 export interface EnvVarInput { name: string; value: string; secret: boolean; keep?: boolean }
+
+export interface Snapshot {
+  id: number;
+  vpsId: number;
+  label: string;
+  status: "creating" | "ready" | "failed";
+  error?: string;
+  systemBytes: number;
+  homeBytes: number;
+  createdAt: string;
+}
 
 export interface ActivityEvent {
   id: number;
@@ -242,6 +253,11 @@ export const api = {
   }) => request<VPS>("POST", "/vps", v),
   vpsAction: (id: number, action: "start" | "stop") => request<VPS>("POST", `/vps/${id}/${action}`),
   deleteVPS: (id: number, keepData: boolean) => request<void>("DELETE", `/vps/${id}${keepData ? "?keepData=true" : ""}`),
+  snapshots: (id: number) => request<Snapshot[]>("GET", `/vps/${id}/snapshots`),
+  takeSnapshot: (id: number, label: string) => request<Snapshot>("POST", `/vps/${id}/snapshots`, { label }),
+  restoreSnapshot: (id: number, sid: number) => request<VPS>("POST", `/vps/${id}/snapshots/${sid}/restore`),
+  cloneSnapshot: (id: number, sid: number, name: string) => request<VPS>("POST", `/vps/${id}/snapshots/${sid}/clone`, { name }),
+  deleteSnapshot: (id: number, sid: number) => request<void>("DELETE", `/vps/${id}/snapshots/${sid}`),
   vpsLogs: (id: number) => request<{ logs: string }>("GET", `/vps/${id}/logs?tail=300`),
 
   listApps: () => request<AppItem[]>("GET", "/apps"),

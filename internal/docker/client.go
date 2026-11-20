@@ -154,7 +154,7 @@ func (c *Client) CreateVPS(ctx context.Context, spec VPSSpec) (string, error) {
 	res, err := c.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Name: VPSContainerName(spec.Name),
 		Config: &container.Config{
-			Image:        images.UbuntuVPSTag,
+			Image:        vpsImage(spec),
 			Hostname:     spec.Name,
 			ExposedPorts: exposed,
 			Labels:       labels("vps", spec.Name),
@@ -170,11 +170,21 @@ func (c *Client) CreateVPS(ctx context.Context, spec VPSSpec) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if spec.Image != "" {
+		return res.ID, nil // a snapshot is already set up
+	}
 	if err := c.copyInitEnv(ctx, res.ID, spec); err != nil {
 		_ = c.Remove(ctx, res.ID)
 		return "", fmt.Errorf("provision: %w", err)
 	}
 	return res.ID, nil
+}
+
+func vpsImage(spec VPSSpec) string {
+	if spec.Image != "" {
+		return spec.Image
+	}
+	return images.UbuntuVPSTag
 }
 
 // copyInitEnv writes /etc/lps/init.env into the created container; the
