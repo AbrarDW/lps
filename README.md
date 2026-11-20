@@ -402,6 +402,15 @@ flowchart TB
 - Database: SQLite through the pure-Go `modernc.org/sqlite` driver, so there's no CGO and cross-compiling to Windows is easy. Migrations live in `internal/store/migrations` and are applied on start. The SQL is kept portable so PostgreSQL can be added as an option later.
 - `internal/docker.Engine` and `internal/tunnel.Provider` are interfaces; API tests use in-memory fakes, so `go test ./...` needs neither Docker nor Tailscale.
 
+### Making a release
+
+1. On GitHub, open **Actions → Windows installer → Run workflow**.
+2. Leave **Use workflow from** on `master`, type the new version (for example `0.2.0`), tick **pre-release** if it is one, and press **Run workflow**.
+
+The run tests and builds the installer from the current `master`. Only if everything passes does it create the tag `v0.2.0` and the release, with `LPS-Setup-0.2.0.exe`, its `.sha256` and notes generated from the merged pull requests. It refuses a version that isn't like `1.2.3` (or `1.2.3-beta.1`), a tag that already exists, and runs from any branch other than `master`. Leave the version empty to just build an installer.
+
+Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works: the installer is attached to that release.
+
 ## Roadmap
 
 ```mermaid
