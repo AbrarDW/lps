@@ -5,10 +5,23 @@ on:
   push:
     branches: [master]
     tags: ["v*"]
+  # One-click releases: Actions → Windows installer → Run workflow, on master,
+  # with a version number. Leave the version empty to only build.
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish release v<this version> from master, e.g. 0.2.0 (empty = build only)"
+        required: false
+        type: string
+        default: ""
+      prerelease:
+        description: "Mark the release as a pre-release"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
-  contents: write # attach the installer to GitHub Releases on v* tags
+  contents: write # create GitHub Releases and attach the installer
 
 jobs:
   installer:
@@ -25,6 +38,23 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      # Inputs reach scripts only through env, never ${{ }} inside run:, so a
+      # crafted version string cannot inject commands.
+      - name: Check the release request
+        if: github.event_name == 'workflow_dispatch' && inputs.release != ''
+        shell: pwsh
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          $v = $env:RELEASE.Trim() -replace '^v', ''
+          if ($v -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Version '$($env:RELEASE)' is not like 1.2.3 or 1.2.3-beta.1" }
+          if ($env:GITHUB_REF -ne 'refs/heads/master') { throw "Releases are made from master; this run is on $($env:GITHUB_REF). Choose master in 'Use workflow from'." }
+          git fetch --tags --quiet origin
+          if (git tag --list "v$v") { throw "Tag v$v already exists. Pick a new version." }
+          "LPS_VERSION=$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "LPS_RELEASE_TAG=v$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Write-Host "Releasing v$v from $($env:GITHUB_SHA)"
 
       - name: Ensure Inno Setup 6
         shell: pwsh
@@ -143,10 +173,30 @@ jobs:
             dist/LPS-Setup-*.exe.sha256
           if-no-files-found: error
 
+      # A pushed v* tag (or a release published in the GitHub UI) gets the
+      # installer attached to its release.
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          files: |
+            dist/LPS-Setup-*.exe
+            dist/LPS-Setup-*.exe.sha256
+
+      # One-click release: creates the tag on the tested commit and the release.
+      - name: Publish release
+        if: env.LPS_RELEASE_TAG != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.LPS_RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: LPS ${{ env.LPS_RELEASE_TAG }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          body: |
+            **Install:** download `LPS-Setup-${{ env.LPS_VERSION }}.exe` below and run it (no administrator rights needed). Until the installer is code-signed, Chrome or Windows may warn about it; see [Download blocked?](https://github.com/${{ github.repository }}#download-blocked) in the README. Check the file against `LPS-Setup-${{ env.LPS_VERSION }}.exe.sha256`.
+
+            **Needs:** Windows 10/11 with WSL2 and Docker Desktop; the setup wizard walks you through both.
           files: |
             dist/LPS-Setup-*.exe
             dist/LPS-Setup-*.exe.sha256

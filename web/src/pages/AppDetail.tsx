@@ -4,11 +4,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, displayHost } from "../api";
 import { DockerfileCard } from "../components/DockerfileCard";
 import { RunConfigCard } from "../components/RunConfigCard";
+import { EnvCard } from "../components/EnvCard";
 import { ActivityList } from "../components/Activity";
 import { UsageCard } from "../components/Usage";
 import { ActionBox, Button, Callout, Card, CornerMarks, ErrorBox, Icon, LogView, StateBadge, Switch, Tabs, Tag, formatLimits } from "../components/ui";
 
-type AppTab = "deployments" | "dockerfile" | "logs";
+type AppTab = "deployments" | "dockerfile" | "env" | "logs";
 
 export function AppDetail() {
   const id = Number(useParams().id);
@@ -151,6 +152,7 @@ export function AppDetail() {
           tabs={[
             { id: "deployments", label: "Deployments" },
             { id: "dockerfile", label: inVPS ? "Run setup" : "Dockerfile" },
+            { id: "env", label: "Environment" },
             { id: "logs", label: inVPS ? "App logs" : "Container logs" },
           ]}
           value={tab}
@@ -206,6 +208,11 @@ export function AppDetail() {
         {tab === "dockerfile" && (
           <div className="p-4">
             {inVPS ? <RunConfigCard app={a} deploying={deploying} /> : <DockerfileCard appId={a.id} deploying={deploying} bare />}
+          </div>
+        )}
+        {tab === "env" && (
+          <div className="p-4">
+            <EnvCard appId={a.id} inVPS={inVPS} deploying={deploying} />
           </div>
         )}
         {tab === "logs" && (

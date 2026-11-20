@@ -41,6 +41,7 @@ type fakeEngine struct {
 	buildErrAt    map[int]bool // builds that failed (no image)
 	cpuNanos      map[string]uint64
 	cpuAt         map[string]time.Time
+	appSpecs      []docker.AppSpec
 }
 
 func newFake() *fakeEngine {
@@ -90,6 +91,7 @@ func (f *fakeEngine) RemoveVolume(_ context.Context, name string) error {
 func (f *fakeEngine) CreateApp(_ context.Context, s docker.AppSpec) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.appSpecs = append(f.appSpecs, s)
 	id := f.newID()
 	f.containers[id] = docker.StateStopped
 	return id, nil

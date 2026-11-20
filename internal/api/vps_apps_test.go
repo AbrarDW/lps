@@ -25,6 +25,7 @@ type fakeVPS struct {
 	execFail   map[string]int // command prefix -> exit code
 	loopback   bool           // apps listen on 127.0.0.1 only
 	usageTicks int
+	execEnv    [][]string
 }
 
 func (f *fakeEngine) vps() *fakeVPS {
@@ -52,6 +53,7 @@ func (f *fakeEngine) Exec(_ context.Context, id, user, dir string, cmd, env []st
 	v := f.vps()
 	line := strings.Join(cmd, " ")
 	v.execs = append(v.execs, user+": "+line)
+	v.execEnv = append(v.execEnv, append([]string(nil), env...))
 	if out == nil {
 		out = io.Discard
 	}

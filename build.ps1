@@ -61,6 +61,8 @@ function Require-Npm {
 }
 
 function Get-Version {
+    # Release builds set the version explicitly (the tag doesn't exist yet).
+    if ($env:LPS_VERSION) { return "v$($env:LPS_VERSION -replace '^v', '')" }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return 'dev' }
     # git writes to stderr outside a repo; don't let that stop the script.
     $old = $ErrorActionPreference
