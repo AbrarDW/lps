@@ -46,12 +46,24 @@ func TestRunReportsPortInUse(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ready := make(chan string, 1)
-	go Run(ctx, Options{Addr: "127.0.0.1:0", DataDir: t.TempDir(), NoRemote: true,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), OnReady: func(u string) { ready <- u }})
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- Run(ctx, Options{Addr: "127.0.0.1:0", DataDir: t.TempDir(), NoRemote: true,
+			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), OnReady: func(u string) { ready <- u }})
+	}()
 	url := <-ready
 	err := Run(ctx, Options{Addr: strings.TrimPrefix(url, "http://"), DataDir: t.TempDir(), NoRemote: true,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err == nil || !strings.Contains(err.Error(), "listen") {
 		t.Fatalf("want listen error, got %v", err)
+	}
+	// Stop the first server and wait for it to close its database: on
+	// Windows an open file can't be deleted, so the temp-dir cleanup would
+	// fail while it is still shutting down.
+	cancel()
+	select {
+	case <-firstDone:
+	case <-time.After(30 * time.Second):
+		t.Fatal("first server did not stop")
 	}
 }
