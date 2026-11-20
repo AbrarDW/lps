@@ -28,6 +28,8 @@ type appView struct {
 	// Remote URLs, set when remote access is active for this app.
 	RemoteURL string `json:"remoteUrl,omitempty"`
 	PublicURL string `json:"publicUrl,omitempty"`
+	// HasGitToken tells the UI an access token is stored (it is never returned).
+	HasGitToken bool `json:"hasGitToken,omitempty"`
 	// DockerfileSource is "lps" when LPS's stored Dockerfile is used, "project"
 	// for the project's own, and "none" for apps that run inside a VPS.
 	DockerfileSource string `json:"dockerfileSource"`
@@ -55,11 +57,17 @@ type createAppReq struct {
 
 	// VPSID runs the app inside that VPS instead of its own container.
 	VPSID      int64  `json:"vpsId"`
-	SourceKind string `json:"sourceKind"` // "pc" (copy SourcePath) or "vps" (use VPSPath)
+	SourceKind string `json:"sourceKind"` // "pc" (SourcePath), "vps" (VPSPath) or "git" (GitURL)
 	VPSPath    string `json:"vpsPath"`
 	Packages   string `json:"packages"`
 	InstallCmd string `json:"installCmd"`
 	StartCmd   string `json:"startCmd"`
+
+	// Git source (SourceKind "git").
+	GitURL     string `json:"gitUrl"`
+	GitBranch  string `json:"gitBranch"`
+	GitToken   string `json:"gitToken"`
+	AutoDeploy bool   `json:"autoDeploy"`
 }
 
 func cleanSourcePath(p string) (string, error) {
@@ -87,14 +95,24 @@ func (req *createAppReq) validate() error {
 	if req.VPSID > 0 {
 		return req.validateVPS()
 	}
-	req.SourceKind, req.VPSPath, req.Packages, req.InstallCmd, req.StartCmd = store.SourcePC, "", "", "", ""
-	var err error
-	if req.SourcePath, err = cleanSourcePath(req.SourcePath); err != nil {
-		return err
+	req.VPSPath, req.Packages, req.InstallCmd, req.StartCmd = "", "", "", ""
+	git := req.SourceKind == store.SourceGit
+	if git {
+		if err := req.validateGit(); err != nil {
+			return err
+		}
+	} else {
+		req.SourceKind, req.GitURL, req.GitBranch, req.GitToken, req.AutoDeploy = store.SourcePC, "", "", "", false
+		var err error
+		if req.SourcePath, err = cleanSourcePath(req.SourcePath); err != nil {
+			return err
+		}
 	}
 	if strings.TrimSpace(req.Dockerfile) == "" {
 		req.Dockerfile = ""
-		if !builder.HasDockerfile(req.SourcePath) {
+		// A repository is only checked at the first deploy; "Check repository"
+		// in the form already told the user whether it has a Dockerfile.
+		if !git && !builder.HasDockerfile(req.SourcePath) {
 			return errors.New("no Dockerfile found in the project folder: use the generated Dockerfile in the form, or add one to the folder")
 		}
 	} else if err := validateDockerfile(req.Dockerfile); err != nil {
@@ -118,6 +136,7 @@ func (s *Server) appView(r *http.Request, a *store.App) appView {
 		}
 	}
 	view.LocalURL = s.localAppURL(a)
+	view.HasGitToken = a.GitToken != ""
 	if dns, active := s.remoteSnapshot(r.Context()); dns != "" {
 		if e, ok := active[a.HostPort]; ok {
 			view.RemoteURL = remoteURL(dns, toExposure(e))
@@ -204,6 +223,9 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Dockerfile = "" // the project's file is now the source of truth
 	}
+	if req.SourceKind == store.SourceGit {
+		req.SourcePath = s.gitDir(req.Name)
+	}
 	port, err := s.reservePort(r.Context(), s.cfg.AppPortMin, s.cfg.AppPortMax)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
@@ -215,6 +237,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		HostPort: port, CPUs: req.CPUs, MemoryMB: req.MemoryMB, Dockerfile: req.Dockerfile,
 		VPSID: req.VPSID, SourceKind: req.SourceKind, VPSPath: req.VPSPath,
 		Packages: req.Packages, InstallCmd: req.InstallCmd, StartCmd: req.StartCmd,
+		GitURL: req.GitURL, GitBranch: req.GitBranch, GitToken: req.GitToken, AutoDeploy: req.AutoDeploy,
 	}
 	if err := s.store.CreateApp(r.Context(), a); err != nil {
 		storeError(s, w, err, "app")
@@ -223,6 +246,9 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	where := "in its own container"
 	if a.InVPS() {
 		where = "in a VPS"
+	}
+	if a.SourceKind == store.SourceGit {
+		where += ", from " + a.GitURL
 	}
 	s.info(r, "app.created", subjApp, a.ID, a.Name, "Created app %s (%s)", a.Name, where)
 	if _, err := s.startDeploy(a); err != nil {
@@ -297,6 +323,8 @@ func (s *Server) startDeploy(a *store.App) (*store.Deployment, error) {
 		}
 		if err != nil {
 			s.fail(nil, "app.deploy_failed", subjApp, a.ID, a.Name, "Deploy #%d of %s failed: %s", d.ID, a.Name, firstLine(err.Error()))
+		} else if hash := s.finishGitDeploy(a, d); hash != "" {
+			s.info(nil, "app.deployed", subjApp, a.ID, a.Name, "Deploy #%d of %s is running (commit %s)", d.ID, a.Name, shortHash(hash))
 		} else {
 			s.info(nil, "app.deployed", subjApp, a.ID, a.Name, "Deploy #%d of %s is running", d.ID, a.Name)
 		}
@@ -337,6 +365,9 @@ func (s *Server) pruneImages(name string, keep int) {
 }
 
 func (s *Server) runDeploy(a *store.App, d *store.Deployment, log io.Writer) (string, error) {
+	if err := s.prepareSource(a, d, log); err != nil {
+		return "", err
+	}
 	if a.InVPS() {
 		return s.runVPSDeploy(a, log)
 	}
@@ -472,6 +503,9 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.DeleteApp(r.Context(), a.ID); err != nil {
 		s.internalError(w, err)
 		return
+	}
+	if a.SourceKind == store.SourceGit {
+		_ = os.RemoveAll(a.SourcePath) // LPS's own clone, not the user's code
 	}
 	s.warn(r, "app.deleted", subjApp, a.ID, a.Name, "Deleted app %s", a.Name)
 	s.kickRemote()

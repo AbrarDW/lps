@@ -93,32 +93,41 @@ type App struct {
 	PublicPort    int     `json:"publicPort"` // Funnel port; 0 = no public link
 	Dockerfile    string  `json:"dockerfile"` // stored in LPS; "" = use the project's Dockerfile
 	// VPSID is the VPS the app runs in; 0 = its own container.
-	VPSID       int64     `json:"vpsId"`
-	SourceKind  string    `json:"sourceKind"` // SourcePC or SourceVPS
-	VPSPath     string    `json:"vpsPath"`    // code folder inside the VPS (SourceVPS)
-	Packages    string    `json:"packages"`   // apt packages the app needs (VPS apps)
-	InstallCmd  string    `json:"installCmd"` // run in the app folder on each deploy (VPS apps)
-	StartCmd    string    `json:"startCmd"`   // keeps running; LPS restarts it (VPS apps)
-	WantRunning bool      `json:"wantRunning"`
-	CreatedAt   time.Time `json:"createdAt"`
+	VPSID       int64  `json:"vpsId"`
+	SourceKind  string `json:"sourceKind"` // SourcePC or SourceVPS
+	VPSPath     string `json:"vpsPath"`    // code folder inside the VPS (SourceVPS)
+	Packages    string `json:"packages"`   // apt packages the app needs (VPS apps)
+	InstallCmd  string `json:"installCmd"` // run in the app folder on each deploy (VPS apps)
+	StartCmd    string `json:"startCmd"`   // keeps running; LPS restarts it (VPS apps)
+	WantRunning bool   `json:"wantRunning"`
+	// Git source (SourceKind == SourceGit).
+	GitURL     string    `json:"gitUrl"`
+	GitBranch  string    `json:"gitBranch"`
+	GitToken   string    `json:"-"`
+	AutoDeploy bool      `json:"autoDeploy"`
+	LastCommit string    `json:"lastCommit"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // App code sources.
 const (
 	SourcePC  = "pc"  // copied from a folder on this PC
 	SourceVPS = "vps" // a folder that already exists inside the VPS
+	SourceGit = "git" // cloned from a git repository on every deploy
 )
 
 // InVPS reports whether the app runs inside a VPS.
 func (a *App) InVPS() bool { return a.VPSID > 0 }
 
 const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, public_port, dockerfile,
-	vps_id, source_kind, vps_path, packages, install_cmd, start_cmd, want_running, created_at`
+	vps_id, source_kind, vps_path, packages, install_cmd, start_cmd, want_running,
+	git_url, git_branch, git_token, auto_deploy, last_commit, created_at`
 
 func scanApp(r scanner) (*App, error) {
 	a := &App{}
 	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.PublicPort, &a.Dockerfile,
-		&a.VPSID, &a.SourceKind, &a.VPSPath, &a.Packages, &a.InstallCmd, &a.StartCmd, &a.WantRunning, &a.CreatedAt)
+		&a.VPSID, &a.SourceKind, &a.VPSPath, &a.Packages, &a.InstallCmd, &a.StartCmd, &a.WantRunning,
+		&a.GitURL, &a.GitBranch, &a.GitToken, &a.AutoDeploy, &a.LastCommit, &a.CreatedAt)
 	return a, err
 }
 
@@ -130,9 +139,11 @@ func (s *Store) CreateApp(ctx context.Context, a *App) error {
 	}
 	a.WantRunning = true
 	res, err := s.db.ExecContext(ctx, `INSERT INTO apps (name, source_path, container_port, host_port, cpus, memory_mb, container_id, dockerfile,
-		vps_id, source_kind, vps_path, packages, install_cmd, start_cmd, want_running, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`, a.Name, a.SourcePath, a.ContainerPort, a.HostPort, a.CPUs, a.MemoryMB, a.ContainerID, a.Dockerfile,
-		a.VPSID, a.SourceKind, a.VPSPath, a.Packages, a.InstallCmd, a.StartCmd, a.CreatedAt)
+		vps_id, source_kind, vps_path, packages, install_cmd, start_cmd, want_running,
+		git_url, git_branch, git_token, auto_deploy, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`, a.Name, a.SourcePath, a.ContainerPort, a.HostPort, a.CPUs, a.MemoryMB, a.ContainerID, a.Dockerfile,
+		a.VPSID, a.SourceKind, a.VPSPath, a.Packages, a.InstallCmd, a.StartCmd,
+		a.GitURL, a.GitBranch, a.GitToken, a.AutoDeploy, a.CreatedAt)
 	if err != nil {
 		return mapErr(err)
 	}
@@ -197,6 +208,24 @@ func (s *Store) SetAppDockerfile(ctx context.Context, id int64, dockerfile strin
 	return err
 }
 
+// SetAppGit updates an app's branch, access token and auto-deploy setting.
+func (s *Store) SetAppGit(ctx context.Context, id int64, branch, token string, autoDeploy bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE apps SET git_branch = ?, git_token = ?, auto_deploy = ? WHERE id = ?`, branch, token, autoDeploy, id)
+	return err
+}
+
+// SetAppLastCommit records the commit the running version was built from.
+func (s *Store) SetAppLastCommit(ctx context.Context, id int64, hash string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE apps SET last_commit = ? WHERE id = ?`, hash, id)
+	return err
+}
+
+// SetDeploymentCommit records which commit a deployment builds.
+func (s *Store) SetDeploymentCommit(ctx context.Context, id int64, hash, message string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE deployments SET commit_hash = ?, commit_message = ? WHERE id = ?`, hash, message, id)
+	return err
+}
+
 // SetAppRunConfig replaces how a VPS app is set up and started.
 func (s *Store) SetAppRunConfig(ctx context.Context, id int64, packages, install, start string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE apps SET packages = ?, install_cmd = ?, start_cmd = ? WHERE id = ?`, packages, install, start, id)
@@ -242,6 +271,9 @@ type Deployment struct {
 	Log        string     `json:"log"`
 	StartedAt  time.Time  `json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
+	// The git commit built, for apps from a repository.
+	CommitHash    string `json:"commitHash,omitempty"`
+	CommitMessage string `json:"commitMessage,omitempty"`
 }
 
 // Deployment statuses.
@@ -288,7 +320,7 @@ func (s *Store) FinishDeployment(ctx context.Context, id int64, status, image, l
 
 // ListDeployments returns an app's deployments, newest first.
 func (s *Store) ListDeployments(ctx context.Context, appID int64, limit int) ([]*Deployment, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, app_id, status, image, log, started_at, finished_at
+	rows, err := s.db.QueryContext(ctx, `SELECT id, app_id, status, image, log, started_at, finished_at, commit_hash, commit_message
 		FROM deployments WHERE app_id = ? ORDER BY id DESC LIMIT ?`, appID, limit)
 	if err != nil {
 		return nil, err
@@ -298,7 +330,7 @@ func (s *Store) ListDeployments(ctx context.Context, appID int64, limit int) ([]
 	for rows.Next() {
 		d := &Deployment{}
 		var fin sql.NullTime
-		if err := rows.Scan(&d.ID, &d.AppID, &d.Status, &d.Image, &d.Log, &d.StartedAt, &fin); err != nil {
+		if err := rows.Scan(&d.ID, &d.AppID, &d.Status, &d.Image, &d.Log, &d.StartedAt, &fin, &d.CommitHash, &d.CommitMessage); err != nil {
 			return nil, err
 		}
 		if fin.Valid {

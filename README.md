@@ -168,6 +168,15 @@ flowchart LR
 
 A VPS only publishes its SSH port, so each VPS app gets a tiny relay container that publishes the app's port on the PC. Local, tailnet and public links work as for any app. A VPS can't be deleted while apps run in it, and two apps in one VPS need different ports.
 
+### Deploying from a git repository
+
+On the New app form choose **Code from → A git repository**, paste the HTTPS clone URL (GitHub, GitLab, Gitea, Bitbucket…), optionally a branch, and press **Check repository**. LPS clones it, detects the project type and proposes a Dockerfile or run commands, just like for a folder. It works for apps in their own container and for apps inside a VPS.
+
+- **Every deploy** makes a fresh shallow clone of the branch, so Redeploy always builds the latest commit. Each deployment shows the commit it built.
+- **Private repositories:** add an access token with read access, e.g. a GitHub fine-grained token with *Contents: read*. It's stored on this PC and never shown again; replace or remove it on the app's **Git** card.
+- **Auto-deploy:** tick *Deploy new commits automatically* and LPS checks the branch every few minutes and deploys new commits. Nothing has to reach your PC from the internet (no webhooks). A commit that fails to deploy isn't retried until you press Redeploy.
+- Use HTTPS URLs; SSH URLs (`git@github.com:…`) need keys and aren't supported. Git doesn't need to be installed: LPS has its own git client.
+
 ### App addresses by name
 
 Every app can be opened by its name instead of a port number:
@@ -454,7 +463,7 @@ flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name"]
     m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA →<br/>Cloudflare Quick Tunnel"]
-    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>git-URL deploys"]
+    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys"]
     m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>signing, auto-update"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
@@ -462,7 +471,7 @@ flowchart LR
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). Next: real hostnames per app through Tailscale Services or Cloudflare Tunnel.
 3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. Next: Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
-4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. Next: git-URL deploys and push-to-deploy webhooks, VPS snapshots.
+4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy. Next: VPS snapshots.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). Next: auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License

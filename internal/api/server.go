@@ -82,6 +82,8 @@ type Server struct {
 	deploying map[int64]bool      // apps with a deploy in progress
 	liveLogs  map[int64]*syncBuffer
 	tickets   map[string]*loginTicket // sign-ins waiting for a 2FA code
+	gitTried  map[int64]string        // last commit auto-deploy tried per app
+	gitKick   chan struct{}
 }
 
 type taskInfo struct {
@@ -124,9 +126,12 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 		s.wg.Add(1)
 		go s.remoteLoop()
 	}
-	s.wg.Add(2)
+	s.gitTried = map[int64]string{}
+	s.gitKick = make(chan struct{}, 1)
+	s.wg.Add(3)
 	go s.vpsAppsLoop()
 	go s.statsLoop()
+	go s.gitPollLoop()
 	return s
 }
 
@@ -181,6 +186,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps", s.handleListApps)
 			r.Post("/apps", s.handleCreateApp)
 			r.Post("/apps/detect", s.handleDetectApp)
+			r.Post("/apps/detect-git", s.handleDetectGit)
 			r.Get("/apps/templates", s.handleAppTemplates)
 			r.Get("/apps/{id}", s.handleGetApp)
 			r.Delete("/apps/{id}", s.handleDeleteApp)
@@ -195,6 +201,7 @@ func (s *Server) Handler() http.Handler {
 			r.Put("/apps/{id}/run-config", s.handleSetAppRunConfig)
 			r.Get("/apps/{id}/env", s.handleGetAppEnv)
 			r.Put("/apps/{id}/env", s.handleSetAppEnv)
+			r.Put("/apps/{id}/git", s.handleSetAppGit)
 
 			r.Get("/events", s.handleListEvents)
 			r.Get("/stats", s.handleStats)

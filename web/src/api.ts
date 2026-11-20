@@ -32,7 +32,11 @@ export interface Deployment {
   log: string;
   startedAt: string;
   finishedAt: string | null;
+  commitHash?: string;
+  commitMessage?: string;
 }
+
+export interface GitCommit { hash: string; message: string; author: string; when: string; branch: string }
 
 export interface AppItem {
   id: number;
@@ -60,7 +64,12 @@ export interface AppItem {
   localUrl?: string;
   /** Name-based address on the tailnet: https://<pc>.ts.net:8080/<app>/ */
   pathUrl?: string;
-  sourceKind: "pc" | "vps";
+  sourceKind: "pc" | "vps" | "git";
+  gitUrl: string;
+  gitBranch: string;
+  autoDeploy: boolean;
+  lastCommit: string;
+  hasGitToken?: boolean;
   vpsPath: string;
   packages: string;
   installCmd: string;
@@ -246,7 +255,11 @@ export const api = {
     dockerfile?: string;
     saveToProject?: boolean;
     vpsId?: number;
-    sourceKind?: "pc" | "vps";
+    sourceKind?: "pc" | "vps" | "git";
+    gitUrl?: string;
+    gitBranch?: string;
+    gitToken?: string;
+    autoDeploy?: boolean;
     vpsPath?: string;
     packages?: string;
     installCmd?: string;
@@ -254,6 +267,9 @@ export const api = {
   }) => request<AppItem>("POST", "/apps", a),
   appEnv: (id: number) => request<EnvVarView[]>("GET", `/apps/${id}/env`),
   setAppEnv: (id: number, vars: EnvVarInput[]) => request<EnvVarView[]>("PUT", `/apps/${id}/env`, { vars }),
+  detectGit: (url: string, branch: string, token: string) =>
+    request<DetectResult & { commit: GitCommit }>("POST", "/apps/detect-git", { url, branch, token }),
+  setAppGit: (id: number, g: { branch: string; token?: string; clearToken?: boolean; autoDeploy: boolean }) => request<AppItem>("PUT", `/apps/${id}/git`, g),
   appTemplates: () => request<Detection[]>("GET", "/apps/templates"),
   setAppRunConfig: (id: number, c: { packages: string; installCmd: string; startCmd: string }) =>
     request<AppItem>("PUT", `/apps/${id}/run-config`, c),
