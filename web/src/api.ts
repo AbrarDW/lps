@@ -93,6 +93,11 @@ export interface AppDockerfile {
   suggested?: Detection;
 }
 
+/** An app's environment variable. Secret values are never sent to the browser. */
+export interface EnvVarView { name: string; value?: string; secret: boolean; hasValue: boolean }
+/** keep: for a secret, keep the stored value (send value ""). */
+export interface EnvVarInput { name: string; value: string; secret: boolean; keep?: boolean }
+
 export interface ActivityEvent {
   id: number;
   at: string;
@@ -234,6 +239,8 @@ export const api = {
     installCmd?: string;
     startCmd?: string;
   }) => request<AppItem>("POST", "/apps", a),
+  appEnv: (id: number) => request<EnvVarView[]>("GET", `/apps/${id}/env`),
+  setAppEnv: (id: number, vars: EnvVarInput[]) => request<EnvVarView[]>("PUT", `/apps/${id}/env`, { vars }),
   appTemplates: () => request<Detection[]>("GET", "/apps/templates"),
   setAppRunConfig: (id: number, c: { packages: string; installCmd: string; startCmd: string }) =>
     request<AppItem>("PUT", `/apps/${id}/run-config`, c),

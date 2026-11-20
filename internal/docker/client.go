@@ -224,6 +224,7 @@ func (c *Client) CreateApp(ctx context.Context, spec AppSpec) (string, error) {
 			Image:        spec.Image,
 			ExposedPorts: exposed,
 			Labels:       labels("app", spec.Name),
+			Env:          spec.Env,
 		},
 		HostConfig: &container.HostConfig{
 			PortBindings:  bindings,

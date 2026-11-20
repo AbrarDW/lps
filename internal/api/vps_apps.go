@@ -156,7 +156,18 @@ func (s *Server) vpsExec(ctx context.Context, v *store.VPS, user, dir string, cm
 // helper runs lps-app as the VPS user and returns its output.
 func (s *Server) helper(ctx context.Context, v *store.VPS, a *store.App, args ...string) (string, error) {
 	var out bytes.Buffer
-	env := append(userEnv(v),
+	var env []string
+	if args[0] == "start" {
+		// The app's own variables go first so LPS's (HOME, PORT, LPS_*) win;
+		// validateEnv also refuses those names.
+		vars, err := s.store.AppEnv(ctx, a.ID)
+		if err != nil {
+			return "", err
+		}
+		env = envList(vars)
+	}
+	env = append(env, userEnv(v)...)
+	env = append(env,
 		"LPS_DIR="+vpsAppDir(a, v),
 		"LPS_PORT="+strconv.Itoa(a.ContainerPort),
 		"LPS_START="+a.StartCmd)
@@ -251,7 +262,12 @@ func (s *Server) runVPSDeploy(a *store.App, log io.Writer) (string, error) {
 	}
 	if a.InstallCmd != "" {
 		fmt.Fprintf(log, "[lps] $ %s\n", a.InstallCmd)
-		env := append(userEnv(v), "PORT="+strconv.Itoa(a.ContainerPort))
+		vars, err := s.store.AppEnv(ctx, a.ID)
+		if err != nil {
+			return label, err
+		}
+		env := append(envList(vars), userEnv(v)...)
+		env = append(env, "PORT="+strconv.Itoa(a.ContainerPort))
 		if err := s.vpsExec(ctx, v, user, dir, []string{"bash", "-lc", a.InstallCmd}, env, log); err != nil {
 			return label, fmt.Errorf("install command failed (%w)", err)
 		}

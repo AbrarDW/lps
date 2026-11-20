@@ -168,6 +168,14 @@ flowchart LR
 
 A VPS only publishes its SSH port, so each VPS app gets a tiny relay container that publishes the app's port on the PC. Local, tailnet and public links work as for any app. A VPS can't be deleted while apps run in it, and two apps in one VPS need different ports.
 
+### Environment variables and secrets
+
+Every app has an **Environment** tab. Add variables one by one or **paste a `.env` file**, mark the ones that are **secret**, and press **Save & redeploy**.
+
+- **Container apps:** the variables are set on the container.
+- **Apps in a VPS:** they're given to the install and start commands. LPS sets `PORT`, `HOST` and `HOME` itself, so those names are refused there; names starting with `LPS_` are reserved everywhere.
+- **Secret values** are never sent back to the browser after saving, and never appear in deploy logs or the activity feed (only the variable names do). They are stored in LPS's database on this PC, and anyone who can run `docker inspect` on this PC can read a container's environment.
+
 ### VPS lifecycle
 
 ```mermaid
@@ -416,18 +424,18 @@ Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works
 ```mermaid
 flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
-    m2["2. Routing<br/>Caddy proxy,<br/>hostname per app,<br/>env vars, auto-detect builds"]
-    m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel →<br/>Cloudflare Tunnel (own domain)"]
-    m4["4. VPS feel<br/>✅ browser terminal,<br/>✅ apps in a VPS,<br/>git-URL deploys,<br/>stats"]
-    m5["5. Packaging<br/>✅ Windows installer + wizard,<br/>Linux + macOS next"]
+    m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>hostname per app"]
+    m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel,<br/>2FA"]
+    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>git-URL deploys"]
+    m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>signing, auto-update"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
 
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
-2. **Routing:** a Caddy reverse proxy with a hostname per app and per VPS HTTP port, env vars, and auto-detected builds (Node, Python, static) without a Dockerfile.
-3. **Remote access (pluggable):** ✅ Tailscale (no domain needed, private access to the dashboard, SSH and apps; Funnel for public links). Next: Cloudflare Quick Tunnel (instant public demo links), then Cloudflare Tunnel with your own domain. Optional 2FA (TOTP) before anything is exposed.
-4. **VPS feel:** ✅ browser terminal, ✅ deploy apps into a VPS. Next: git-URL deploys and webhooks, and resource stats.
-5. **Packaging:** ✅ Windows installer, tray app and setup wizard (checks WSL2 and Docker, creates the admin, offers remote access, start with Windows). Next: code signing, auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
+2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. Next: a reverse proxy (Caddy) with a hostname per app and per VPS HTTP port.
+3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). Next: two-factor sign-in (TOTP), Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
+4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. Next: git-URL deploys and push-to-deploy webhooks, VPS snapshots.
+5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). Next: auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License
 

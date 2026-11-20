@@ -363,9 +363,16 @@ func (s *Server) runDeploy(a *store.App, d *store.Deployment, log io.Writer) (st
 		return image, fmt.Errorf("remove old container: %w", err)
 	}
 	_ = s.engine.Remove(ctx, docker.AppContainerName(a.Name))
+	vars, err := s.store.AppEnv(ctx, a.ID)
+	if err != nil {
+		return image, err
+	}
+	if len(vars) > 0 {
+		fmt.Fprintf(log, "[lps] environment: %d variable(s)\n", len(vars))
+	}
 	cid, err := s.engine.CreateApp(ctx, docker.AppSpec{
 		Name: a.Name, Image: image, ContainerPort: a.ContainerPort, HostPort: a.HostPort,
-		CPUs: a.CPUs, MemoryMB: a.MemoryMB,
+		CPUs: a.CPUs, MemoryMB: a.MemoryMB, Env: envList(vars),
 	})
 	if err != nil {
 		return image, fmt.Errorf("create container: %w", err)

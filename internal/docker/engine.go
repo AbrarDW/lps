@@ -32,6 +32,7 @@ type AppSpec struct {
 	HostPort      int
 	CPUs          float64
 	MemoryMB      int
+	Env           []string // NAME=value
 }
 
 // Terminal is an interactive shell session (a TTY) inside a container.

@@ -181,6 +181,8 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps/{id}/dockerfile", s.handleGetAppDockerfile)
 			r.Put("/apps/{id}/dockerfile", s.handleSetAppDockerfile)
 			r.Put("/apps/{id}/run-config", s.handleSetAppRunConfig)
+			r.Get("/apps/{id}/env", s.handleGetAppEnv)
+			r.Put("/apps/{id}/env", s.handleSetAppEnv)
 
 			r.Get("/events", s.handleListEvents)
 			r.Get("/stats", s.handleStats)
