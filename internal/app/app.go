@@ -89,6 +89,13 @@ func Run(ctx context.Context, o Options) error {
 	if !o.NoRemote {
 		tp = tunnel.NewTailscale()
 	}
+	// The apps gateway (https://<pc>.ts.net:8080/<app>/ over Tailscale) has its
+	// own local port, next to the dashboard's if it is free.
+	gwLn := listenGateway(o.Addr, cfg.DashboardPort, logger)
+	if gwLn != nil {
+		defer gwLn.Close()
+		cfg.GatewayPort = gwLn.Addr().(*net.TCPAddr).Port
+	}
 	srv := api.New(cfg, st, eng, tp, web.Dist(), logger)
 	defer srv.Shutdown()
 
@@ -100,6 +107,16 @@ func Run(ctx context.Context, o Options) error {
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- httpSrv.Serve(ln) }()
+	var gwSrv *http.Server
+	if gwLn != nil {
+		gwSrv = &http.Server{Handler: srv.GatewayHandler(), ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			if err := gwSrv.Serve(gwLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Warn("apps gateway stopped", "err", err)
+			}
+		}()
+		logger.Info("apps gateway listening", "url", "http://"+gwLn.Addr().String())
+	}
 
 	url := "http://" + ln.Addr().String()
 	logger.Info("LPS dashboard listening", "url", url, "data", o.DataDir)
@@ -118,7 +135,29 @@ func Run(ctx context.Context, o Options) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shutdownCtx)
+	if gwSrv != nil {
+		_ = gwSrv.Shutdown(shutdownCtx)
+	}
 	return nil
+}
+
+// listenGateway opens the apps gateway's local listener: the port after the
+// dashboard's if free, else any free port. It returns nil if neither works
+// (then apps keep their port-based addresses only).
+func listenGateway(dashAddr string, dashPort int, logger *slog.Logger) net.Listener {
+	host, _, err := net.SplitHostPort(dashAddr)
+	if err != nil || dashPort == 0 {
+		return nil
+	}
+	if ln, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(dashPort+1))); err == nil {
+		return ln
+	}
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+	if err != nil {
+		logger.Warn("apps gateway disabled", "err", err)
+		return nil
+	}
+	return ln
 }
 
 // Healthy reports whether an LPS dashboard is already answering at addr.

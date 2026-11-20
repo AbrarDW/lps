@@ -149,6 +149,15 @@ func (s *Store) GetApp(ctx context.Context, id int64) (*App, error) {
 	return a, nil
 }
 
+// GetAppByName fetches an app by its name.
+func (s *Store) GetAppByName(ctx context.Context, name string) (*App, error) {
+	a, err := scanApp(s.db.QueryRowContext(ctx, `SELECT `+appCols+` FROM apps WHERE name = ?`, name))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return a, nil
+}
+
 // ListApps lists all apps.
 func (s *Store) ListApps(ctx context.Context) ([]*App, error) {
 	return s.queryApps(ctx, `SELECT `+appCols+` FROM apps ORDER BY id`)
