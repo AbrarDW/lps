@@ -168,6 +168,15 @@ flowchart LR
 
 A VPS only publishes its SSH port, so each VPS app gets a tiny relay container that publishes the app's port on the PC. Local, tailnet and public links work as for any app. A VPS can't be deleted while apps run in it, and two apps in one VPS need different ports.
 
+### Deploying from a git repository
+
+On the New app form choose **Code from → A git repository**, paste the HTTPS clone URL (GitHub, GitLab, Gitea, Bitbucket…), optionally a branch, and press **Check repository**. LPS clones it, detects the project type and proposes a Dockerfile or run commands, just like for a folder. It works for apps in their own container and for apps inside a VPS.
+
+- **Every deploy** makes a fresh shallow clone of the branch, so Redeploy always builds the latest commit. Each deployment shows the commit it built.
+- **Private repositories:** add an access token with read access, e.g. a GitHub fine-grained token with *Contents: read*. It's stored on this PC and never shown again; replace or remove it on the app's **Git** card.
+- **Auto-deploy:** tick *Deploy new commits automatically* and LPS checks the branch every few minutes and deploys new commits. Nothing has to reach your PC from the internet (no webhooks). A commit that fails to deploy isn't retried until you press Redeploy.
+- Use HTTPS URLs; SSH URLs (`git@github.com:…`) need keys and aren't supported. Git doesn't need to be installed: LPS has its own git client.
+
 ### App addresses by name
 
 Every app can be opened by its name instead of a port number:
@@ -269,6 +278,20 @@ flowchart LR
 - **"Could not resolve hostname" or the site can't be reached:** the device you're using must have the Tailscale app installed, connected, and signed in to the **same account** as the home PC. `*.ts.net` addresses are private and don't exist for other devices. Check that the PC appears in the device's Tailscale device list. On a Mac, keep **Use Tailscale DNS settings** on, and turn off other VPNs or iCloud Private Relay.
 - **It worked before, now it doesn't:** the home PC must be on and awake, with Docker Desktop, Tailscale and lpsd running. Press **Check again** on the Remote access page and look for errors.
 - **Sharing with someone without Tailscale:** turn on the app's **Public link**. It can take about a minute to start working.
+
+### Two-factor sign-in
+
+Turn it on before you reach LPS from other devices: open **Account** (click your name at the top right) → **Turn on two-factor sign-in**, scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden, Authy…) and enter the code it shows. From then on, signing in needs your password and the app's 6-digit code.
+
+You also get **10 recovery codes**: save them (Copy or Download .txt). Each signs you in once if you don't have your phone; make new ones on the Account page when they run low.
+
+**Lost your phone and your recovery codes?** On the PC where LPS runs, turn two-factor sign-in off from a terminal, then sign in with your password:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\LPS\lpsd.exe" disable-2fa
+```
+
+(On Linux/macOS: `lpsd disable-2fa`. Add `-data DIR` if you use a custom data folder, and `-user NAME` if there is more than one account.) Being able to run it on that PC is the proof that it's yours.
 
 ## Screenshots
 
@@ -439,16 +462,16 @@ Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works
 flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name"]
-    m3["3. Remote access<br/>✅ Tailscale →<br/>Cloudflare Quick Tunnel,<br/>2FA"]
-    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>git-URL deploys"]
+    m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA →<br/>Cloudflare Quick Tunnel"]
+    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys"]
     m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>signing, auto-update"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
 
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). Next: real hostnames per app through Tailscale Services or Cloudflare Tunnel.
-3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). Next: two-factor sign-in (TOTP), Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
-4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. Next: git-URL deploys and push-to-deploy webhooks, VPS snapshots.
+3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. Next: Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
+4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy. Next: VPS snapshots.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). Next: auto-update, and Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License

@@ -81,6 +81,9 @@ type Server struct {
 	vpsTasks  map[int64]*taskInfo // provisioning status per VPS
 	deploying map[int64]bool      // apps with a deploy in progress
 	liveLogs  map[int64]*syncBuffer
+	tickets   map[string]*loginTicket // sign-ins waiting for a 2FA code
+	gitTried  map[int64]string        // last commit auto-deploy tried per app
+	gitKick   chan struct{}
 }
 
 type taskInfo struct {
@@ -117,14 +120,18 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 		vpsTasks:    map[int64]*taskInfo{},
 		deploying:   map[int64]bool{},
 		liveLogs:    map[int64]*syncBuffer{},
+		tickets:     map[string]*loginTicket{},
 	}
 	if tp != nil {
 		s.wg.Add(1)
 		go s.remoteLoop()
 	}
-	s.wg.Add(2)
+	s.gitTried = map[int64]string{}
+	s.gitKick = make(chan struct{}, 1)
+	s.wg.Add(3)
 	go s.vpsAppsLoop()
 	go s.statsLoop()
+	go s.gitPollLoop()
 	return s
 }
 
@@ -146,6 +153,7 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/setup", s.handleSetupStatus)
 		r.Post("/setup", s.handleSetup)
 		r.Post("/auth/login", s.handleLogin)
+		r.Post("/auth/login/2fa", s.handleLogin2FA)
 		r.Post("/auth/logout", s.handleLogout)
 
 		r.Group(func(r chi.Router) {
@@ -157,6 +165,11 @@ func (s *Server) Handler() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth)
 			r.Get("/auth/me", s.handleMe)
+			r.Get("/auth/2fa", s.handleGet2FA)
+			r.Post("/auth/2fa/setup", s.handleSetup2FA)
+			r.Post("/auth/2fa/enable", s.handleEnable2FA)
+			r.Post("/auth/2fa/disable", s.handleDisable2FA)
+			r.Post("/auth/2fa/recovery-codes", s.handleNewRecoveryCodes)
 			r.Get("/system", s.handleSystem)
 			r.Get("/system/autostart", s.handleGetAutostart)
 			r.Put("/system/autostart", s.handleSetAutostart)
@@ -173,6 +186,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps", s.handleListApps)
 			r.Post("/apps", s.handleCreateApp)
 			r.Post("/apps/detect", s.handleDetectApp)
+			r.Post("/apps/detect-git", s.handleDetectGit)
 			r.Get("/apps/templates", s.handleAppTemplates)
 			r.Get("/apps/{id}", s.handleGetApp)
 			r.Delete("/apps/{id}", s.handleDeleteApp)
@@ -187,6 +201,7 @@ func (s *Server) Handler() http.Handler {
 			r.Put("/apps/{id}/run-config", s.handleSetAppRunConfig)
 			r.Get("/apps/{id}/env", s.handleGetAppEnv)
 			r.Put("/apps/{id}/env", s.handleSetAppEnv)
+			r.Put("/apps/{id}/git", s.handleSetAppGit)
 
 			r.Get("/events", s.handleListEvents)
 			r.Get("/stats", s.handleStats)

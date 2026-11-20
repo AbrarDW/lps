@@ -101,6 +101,10 @@ func (req *createAppReq) validateVPS() error {
 			return err
 		}
 		req.VPSPath = ""
+	case store.SourceGit:
+		if err := req.validateGit(); err != nil {
+			return err
+		}
 	case store.SourceVPS:
 		var err error
 		if req.VPSPath, err = cleanVPSPath(req.VPSPath); err != nil {
@@ -108,7 +112,7 @@ func (req *createAppReq) validateVPS() error {
 		}
 		req.SourcePath = ""
 	default:
-		return errors.New(`sourceKind must be "pc" or "vps"`)
+		return errors.New(`sourceKind must be "pc", "vps" or "git"`)
 	}
 	var err error
 	if req.Packages, req.InstallCmd, req.StartCmd, err = validateRunSetup(req.Packages, req.InstallCmd, req.StartCmd); err != nil {

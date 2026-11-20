@@ -5,6 +5,7 @@ import { api, ApiError, displayHost } from "../api";
 import { DockerfileCard } from "../components/DockerfileCard";
 import { RunConfigCard } from "../components/RunConfigCard";
 import { EnvCard } from "../components/EnvCard";
+import { GitCard } from "../components/GitCard";
 import { ActivityList } from "../components/Activity";
 import { UsageCard } from "../components/Usage";
 import { ActionBox, Button, Callout, Card, CornerMarks, ErrorBox, Icon, LogView, StateBadge, Switch, Tabs, Tag, formatLimits } from "../components/ui";
@@ -65,6 +66,12 @@ export function AppDetail() {
   const shown = deployments.data?.find((d) => d.id === selected) ?? deployments.data?.[0];
   const running = a.state === "running";
   const inVPS = a.vpsId > 0;
+  const source =
+    a.sourceKind === "git"
+      ? `${a.gitUrl} (${a.gitBranch || "default branch"}${a.lastCommit ? ` @ ${a.lastCommit.slice(0, 7)}` : ""})`
+      : a.sourceKind === "vps"
+        ? `${a.vpsName}:${a.vpsPath}`
+        : a.sourcePath;
 
   return (
     <>
@@ -91,11 +98,11 @@ export function AppDetail() {
           <span className="font-mono text-xs break-all text-ink-faint">
             {inVPS ? (
               <>
-                {a.sourceKind === "vps" ? `${a.vpsName}:${a.vpsPath}` : a.sourcePath} · port {a.containerPort} in the VPS · <span className="normal-case">{a.startCmd}</span>
+                {source} · port {a.containerPort} in the VPS · <span className="normal-case">{a.startCmd}</span>
               </>
             ) : (
               <>
-                {a.sourcePath} · container port {a.containerPort} · {formatLimits(a.cpus, a.memoryMb)} · {a.dockerfileSource === "lps" ? "Dockerfile stored in LPS" : "project Dockerfile"}
+                {source} · container port {a.containerPort} · {formatLimits(a.cpus, a.memoryMb)} · {a.dockerfileSource === "lps" ? "Dockerfile stored in LPS" : "project Dockerfile"}
               </>
             )}
           </span>
@@ -201,6 +208,11 @@ export function AppDetail() {
                         <StateBadge state={d.status} />
                       </span>
                       <span className="text-xs text-ink-muted">{new Date(d.startedAt).toLocaleString()}</span>
+                      {d.commitHash && (
+                        <span className="truncate text-xs text-ink-2" title={d.commitMessage}>
+                          <code>{d.commitHash.slice(0, 7)}</code> {d.commitMessage}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );
@@ -222,7 +234,7 @@ export function AppDetail() {
         )}
         {tab === "dockerfile" && (
           <div className="p-4">
-            {inVPS ? <RunConfigCard app={a} deploying={deploying} /> : <DockerfileCard appId={a.id} deploying={deploying} bare />}
+            {inVPS ? <RunConfigCard app={a} deploying={deploying} /> : <DockerfileCard appId={a.id} deploying={deploying} bare fromGit={a.sourceKind === "git"} />}
           </div>
         )}
         {tab === "env" && (
@@ -248,6 +260,7 @@ export function AppDetail() {
       </section>
 
       <section className="flex flex-wrap items-start gap-5">
+        {a.sourceKind === "git" && <GitCard app={a} className="flex-[1_1_380px]" />}
         <Card title="Public link" className="flex-[1_1_380px]">
           {!remote.data?.enabled ? (
             <p className="m-0 text-ink-muted">
@@ -282,7 +295,11 @@ export function AppDetail() {
         <Card title="Danger zone" tone="danger" className="flex-[1_1_300px]">
           <div className="flex flex-col gap-3 text-[13px]">
             <p className="m-0 text-ink-2">
-              {inVPS ? "The app is stopped and its relay removed. Its folder in the VPS is kept." : "The container is removed. Your project folder is not touched."}
+              {inVPS
+                ? "The app is stopped and its relay removed. Its folder in the VPS is kept."
+                : a.sourceKind === "git"
+                  ? "The container and LPS's copy of the repository are removed. The repository itself is not touched."
+                  : "The container is removed. Your project folder is not touched."}
             </p>
             <Button
               variant="danger"

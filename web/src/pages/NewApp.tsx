@@ -15,7 +15,7 @@ function useDebounced<T>(value: T, ms: number) {
   return v;
 }
 
-type CodeFrom = "pc" | "vps";
+type CodeFrom = "pc" | "git" | "vps";
 
 /** Template labels name the Docker images they use; drop that when running in a VPS. */
 const vpsLabel = (label: string) => label.replace(/ \((nginx|Apache)\)$/, "");
@@ -39,7 +39,18 @@ export function NewApp() {
   const vpsList = useQuery({ queryKey: ["vps"], queryFn: api.listVPS });
   const inVPS = target !== "";
   const vps = vpsList.data?.find((v) => String(v.id) === target);
-  const usePCFolder = !inVPS || codeFrom === "pc";
+  const usePCFolder = codeFrom === "pc";
+  const useGit = codeFrom === "git";
+  // A folder inside a VPS only makes sense for apps that run in one.
+  useEffect(() => {
+    if (!inVPS && codeFrom === "vps") setCodeFrom("pc");
+  }, [inVPS, codeFrom]);
+
+  const [git, setGit] = useState({ url: "", branch: "", token: "", autoDeploy: false });
+  const gitKey = `${git.url.trim()}|${git.branch.trim()}|${git.token.trim()}`;
+  const gitCheck = useMutation({ mutationFn: () => api.detectGit(git.url.trim(), git.branch.trim(), git.token.trim()) });
+  const [checkedKey, setCheckedKey] = useState("");
+  const gitChecked = gitCheck.isSuccess && checkedKey === gitKey;
 
   const path = useDebounced(form.sourcePath.trim(), 500);
   const detect = useQuery({
@@ -49,7 +60,9 @@ export function NewApp() {
     retry: false,
   });
   const templates = useQuery({ queryKey: ["app-templates"], queryFn: api.appTemplates, enabled: inVPS && codeFrom === "vps" });
-  const needsDockerfile = !inVPS && detect.data && !detect.data.hasDockerfile;
+  // What we know about the code: from the folder, or from the checked repository.
+  const det = useGit ? (gitChecked ? gitCheck.data : undefined) : usePCFolder ? detect.data : undefined;
+  const needsDockerfile = !inVPS && det && !det.hasDockerfile;
 
   function applyRun(type: string, r: RunSetup) {
     setRun({ type, packages: r.packages, install: r.install, start: r.start });
@@ -58,8 +71,8 @@ export function NewApp() {
 
   // Load the detected setup whenever a new folder is detected or the target changes.
   useEffect(() => {
-    const d = detect.data;
-    if (!d || !usePCFolder) return;
+    const d = det;
+    if (!d) return;
     if (inVPS) {
       applyRun(d.detection.type, d.detection.run);
       return;
@@ -69,7 +82,7 @@ export function NewApp() {
       return;
     }
     applyTemplate(d.detection);
-  }, [detect.data, inVPS, usePCFolder]);
+  }, [det, inVPS]);
 
   function applyTemplate(t: Detection) {
     setTemplate(t);
@@ -77,7 +90,7 @@ export function NewApp() {
     if (!portTouched) setForm((f) => ({ ...f, containerPort: String(t.port) }));
   }
 
-  const runChoices = codeFrom === "vps" ? templates.data : detect.data?.templates;
+  const runChoices = codeFrom === "vps" ? templates.data : det?.templates;
   const runNotes = runChoices?.find((t) => t.type === run.type)?.run.notes;
 
   const m = useMutation({
@@ -88,7 +101,10 @@ export function NewApp() {
         containerPort: Number(form.containerPort),
         cpus: inVPS ? 0 : Number(form.cpus) || 0,
         memoryMb: inVPS ? 0 : Number(form.memoryMb) || 0,
-        ...(needsDockerfile ? { dockerfile, saveToProject } : {}),
+        ...(needsDockerfile ? { dockerfile, saveToProject: saveToProject && usePCFolder } : {}),
+        ...(useGit
+          ? { sourceKind: "git" as const, gitUrl: git.url.trim(), gitBranch: git.branch.trim(), gitToken: git.token.trim(), autoDeploy: git.autoDeploy }
+          : {}),
         ...(inVPS
           ? { vpsId: Number(target), sourceKind: codeFrom, vpsPath: codeFrom === "vps" ? vpsPath.trim() : "", packages: run.packages, installCmd: run.install, startCmd: run.start }
           : {}),
@@ -142,13 +158,14 @@ export function NewApp() {
           </div>
           {inVPS && vps && vps.state !== "running" && <Callout intent="warning">VPS {vps.name} is {vps.state}. Start it before deploying.</Callout>}
 
-          {inVPS && (
+          {(
             <fieldset className="m-0 flex flex-wrap gap-x-6 gap-y-2 border-0 p-0">
               <legend className="mb-1.5 text-[13px] font-medium">Code from</legend>
               {(
                 [
-                  ["pc", "A folder on this PC", "Copied into the VPS on every deploy"],
-                  ["vps", "A folder inside the VPS", "e.g. a git clone; Redeploy re-runs install and start"],
+                  ["pc", "A folder on this PC", inVPS ? "Copied into the VPS on every deploy" : "Built on every deploy"],
+                  ["git", "A git repository", "GitHub, GitLab… cloned on every deploy"],
+                  ...(inVPS ? ([["vps", "A folder inside the VPS", "e.g. your own clone; Redeploy re-runs install and start"]] as const) : []),
                 ] as const
               ).map(([value, label, hint]) => (
                 <label key={value} className="flex items-start gap-2 text-sm">
@@ -166,6 +183,54 @@ export function NewApp() {
             <Field label="Project folder on this PC" hint="Absolute path, e.g. C:\Users\you\projects\my-site or /home/you/my-site">
               <Input value={form.sourcePath} onChange={set("sourcePath")} required />
             </Field>
+          ) : useGit ? (
+            <div className="flex flex-col gap-3">
+              <Field label="Repository URL" hint="The HTTPS clone URL, e.g. https://github.com/you/my-site.git">
+                <Input
+                  aria-label="Repository URL"
+                  value={git.url}
+                  onChange={(e) => setGit({ ...git, url: e.target.value })}
+                  placeholder="https://github.com/you/my-site.git"
+                  className="font-mono"
+                  required
+                  spellCheck={false}
+                />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Branch" hint="Empty = the repository's default branch">
+                  <Input aria-label="Branch" value={git.branch} onChange={(e) => setGit({ ...git, branch: e.target.value })} placeholder="default branch" className="font-mono" spellCheck={false} />
+                </Field>
+                <Field label="Access token (private repositories)" hint="A token with read access, e.g. a GitHub fine-grained token with Contents: read. Stored on this PC, never shown again.">
+                  <Input aria-label="Access token" type="password" autoComplete="off" value={git.token} onChange={(e) => setGit({ ...git, token: e.target.value })} />
+                </Field>
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1 accent-[#2d72d2]" checked={git.autoDeploy} onChange={(e) => setGit({ ...git, autoDeploy: e.target.checked })} />
+                <span>
+                  Deploy new commits automatically
+                  <span className="block text-xs text-ink-muted">LPS checks the branch every few minutes; nothing needs to reach this PC from the internet.</span>
+                </span>
+              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant="secondary"
+                  disabled={!git.url.trim() || gitCheck.isPending}
+                  onClick={() => {
+                    setCheckedKey(gitKey);
+                    gitCheck.mutate();
+                  }}
+                >
+                  {gitCheck.isPending ? "Checking…" : "Check repository"}
+                </Button>
+                {gitChecked && gitCheck.data && (
+                  <span className="text-[13px] text-success-ink">
+                    ✓ {gitCheck.data.commit.branch} at <code>{gitCheck.data.commit.hash.slice(0, 7)}</code>: {gitCheck.data.commit.message}
+                  </span>
+                )}
+                {!gitChecked && !gitCheck.isPending && git.url.trim() && <span className="text-xs text-ink-muted">Check it to see how LPS will build it.</span>}
+              </div>
+              {checkedKey === gitKey && <ErrorBox error={gitCheck.error} />}
+            </div>
           ) : (
             <Field label={`Folder inside VPS ${vps?.name ?? ""}`} hint={<>Absolute, or relative to your home folder with <code>~/</code>, e.g. <code>~/my-site</code></>}>
               <Input aria-label="Folder inside the VPS" value={vpsPath} onChange={(e) => setVpsPath(e.target.value)} required className="font-mono" />
@@ -174,9 +239,9 @@ export function NewApp() {
 
           {usePCFolder && detect.isFetching && <p className="text-[13px] text-ink-muted">Looking at the folder…</p>}
           {usePCFolder && detect.error && <ErrorBox error={detect.error} />}
-          {!inVPS && detect.data?.hasDockerfile && (
+          {!inVPS && det?.hasDockerfile && (
             <p className="rounded-[2px] border border-success/45 bg-success/12 px-3 py-2 text-[13px] text-success-ink">
-              ✓ Found a Dockerfile in this folder. LPS will use it.
+              ✓ Found a Dockerfile {useGit ? "in the repository" : "in this folder"}. LPS will use it.
             </p>
           )}
           {needsDockerfile && template && (
@@ -184,7 +249,7 @@ export function NewApp() {
               <div>
                 <div className="font-medium">No Dockerfile found: LPS made one for you</div>
                 <div className="text-[13px] text-ink-2">
-                  Detected: <b>{detect.data!.detection.label}</b>. Review it, change the template, or edit it below.
+                  Detected: <b>{det!.detection.label}</b>. Review it, change the template, or edit it below.
                 </div>
               </div>
               <Field label="Template">
@@ -192,14 +257,14 @@ export function NewApp() {
                   aria-label="Template"
                   value={template.type}
                   onChange={(e) => {
-                    const t = detect.data!.templates.find((x) => x.type === e.target.value);
+                    const t = det!.templates.find((x) => x.type === e.target.value);
                     if (t) applyTemplate(t);
                   }}
                 >
-                  {detect.data!.templates.map((t) => (
+                  {det!.templates.map((t) => (
                     <option key={t.type} value={t.type}>
                       {t.label}
-                      {t.type === detect.data!.detection.type ? " (detected)" : ""}
+                      {t.type === det!.detection.type ? " (detected)" : ""}
                     </option>
                   ))}
                 </Select>
@@ -214,16 +279,22 @@ export function NewApp() {
                   ))}
                 </ul>
               )}
-              <label className="flex items-start gap-2 text-sm">
-                <input type="checkbox" className="mt-1" checked={saveToProject} onChange={(e) => setSaveToProject(e.target.checked)} />
-                <span>
-                  Also save this Dockerfile into the project folder
-                  <span className="block text-xs text-ink-muted">
-                    Creates <code>Dockerfile</code> (and <code>.dockerignore</code> if missing) so you can edit it in your editor and commit it. Off: LPS
-                    keeps it and your folder is not changed.
+              {usePCFolder ? (
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1" checked={saveToProject} onChange={(e) => setSaveToProject(e.target.checked)} />
+                  <span>
+                    Also save this Dockerfile into the project folder
+                    <span className="block text-xs text-ink-muted">
+                      Creates <code>Dockerfile</code> (and <code>.dockerignore</code> if missing) so you can edit it in your editor and commit it. Off: LPS
+                      keeps it and your folder is not changed.
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+              ) : (
+                <p className="m-0 text-xs text-ink-muted">
+                  LPS keeps this Dockerfile and uses it for every commit. To manage it in git instead, commit a <code>Dockerfile</code> to the repository.
+                </p>
+              )}
             </div>
           )}
 
@@ -232,9 +303,9 @@ export function NewApp() {
               <div>
                 <div className="font-medium">How to run it in the VPS</div>
                 <div className="text-[13px] text-ink-2">
-                  {usePCFolder && detect.data ? (
+                  {det ? (
                     <>
-                      Detected: <b>{vpsLabel(detect.data.detection.label)}</b>. Check the commands below.
+                      Detected: <b>{vpsLabel(det.detection.label)}</b>. Check the commands below.
                     </>
                   ) : (
                     "Pick a project type to fill these in, or type your own."
@@ -255,7 +326,7 @@ export function NewApp() {
                     {runChoices.map((t) => (
                       <option key={t.type} value={t.type}>
                         {vpsLabel(t.label)}
-                        {usePCFolder && t.type === detect.data?.detection.type ? " (detected)" : ""}
+                        {t.type === det?.detection.type ? " (detected)" : ""}
                       </option>
                     ))}
                   </Select>
@@ -269,9 +340,9 @@ export function NewApp() {
                   ))}
                 </ul>
               )}
-              {usePCFolder && (
+              {(usePCFolder || useGit) && (
                 <p className="m-0 text-xs text-ink-muted">
-                  The folder is copied to <code>~/apps/{form.name || "<name>"}</code> and replaced on every deploy, so keep data the app writes somewhere else (e.g.{" "}
+                  The {useGit ? "repository" : "folder"} is copied to <code>~/apps/{form.name || "<name>"}</code> and replaced on every deploy, so keep data the app writes somewhere else (e.g.{" "}
                   <code>~/data</code>).
                 </p>
               )}
@@ -305,7 +376,7 @@ export function NewApp() {
           </div>
           <ErrorBox error={m.error} />
           <div className="flex gap-2">
-            <Button type="submit" disabled={m.isPending || (usePCFolder && detect.isFetching)}>
+            <Button type="submit" disabled={m.isPending || (usePCFolder && detect.isFetching) || (useGit && !gitChecked)}>
               {m.isPending ? "Creating…" : inVPS ? "Create and deploy to VPS" : "Create and deploy"}
             </Button>
             <Link to="/apps" className="inline-flex h-9 items-center px-3 text-ink-muted no-underline hover:text-ink">

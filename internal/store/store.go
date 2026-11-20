@@ -117,6 +117,23 @@ type User struct {
 	Username     string    `json:"username"`
 	PasswordHash string    `json:"-"`
 	CreatedAt    time.Time `json:"createdAt"`
+	// TOTPSecret is set when two-factor sign-in is on.
+	TOTPSecret  string `json:"-"`
+	TOTPPending string `json:"-"`
+	TOTPLast    int64  `json:"-"`
+	// TwoFactor tells the UI whether two-factor sign-in is on.
+	TwoFactor bool `json:"twoFactor"`
+}
+
+const userCols = `u.id, u.username, u.password_hash, u.created_at, u.totp_secret, u.totp_pending, u.totp_last`
+
+func scanUser(r interface{ Scan(...any) error }) (*User, error) {
+	u := &User{}
+	if err := r.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt, &u.TOTPSecret, &u.TOTPPending, &u.TOTPLast); err != nil {
+		return nil, mapErr(err)
+	}
+	u.TwoFactor = u.TOTPSecret != ""
+	return u, nil
 }
 
 // CountUsers returns the number of accounts (0 means first-run setup is pending).
@@ -155,13 +172,7 @@ func (s *Store) CreateFirstUser(ctx context.Context, username, passwordHash stri
 
 // UserByUsername looks up a user.
 func (s *Store) UserByUsername(ctx context.Context, username string) (*User, error) {
-	u := &User{}
-	err := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, created_at FROM users WHERE username = ?`, username).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return u, nil
+	return scanUser(s.db.QueryRowContext(ctx, `SELECT `+userCols+` FROM users u WHERE u.username = ?`, username))
 }
 
 // CreateSession stores a hashed session token.
@@ -173,16 +184,10 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash string, userID int6
 
 // UserBySession returns the user owning a non-expired session.
 func (s *Store) UserBySession(ctx context.Context, tokenHash string) (*User, error) {
-	u := &User{}
-	err := s.db.QueryRowContext(ctx, `
-		SELECT u.id, u.username, u.password_hash, u.created_at
+	return scanUser(s.db.QueryRowContext(ctx, `
+		SELECT `+userCols+`
 		FROM sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = ? AND s.expires_at > ?`, tokenHash, time.Now().UTC()).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	return u, nil
+		WHERE s.token_hash = ? AND s.expires_at > ?`, tokenHash, time.Now().UTC()))
 }
 
 // DeleteSession removes a session (logout).

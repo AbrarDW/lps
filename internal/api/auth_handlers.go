@@ -92,6 +92,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
+	if u.TwoFactor {
+		// Password is right; a session needs the second factor too.
+		ticket, err := s.issueTicket(u.ID)
+		if err != nil {
+			s.internalError(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"twoFactorRequired": true, "ticket": ticket})
+		return
+	}
 	s.limiter.Reset(ip)
 	if err := s.startSession(w, r, u.ID); err != nil {
 		s.internalError(w, err)

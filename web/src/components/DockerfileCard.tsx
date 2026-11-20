@@ -4,7 +4,7 @@ import { api } from "../api";
 import { Button, Card, ErrorBox, LogView, TextArea } from "./ui";
 
 /** Shows the Dockerfile an app builds with, and lets the user edit an LPS-managed one. */
-export function DockerfileCard({ appId, deploying, bare }: { appId: number; deploying?: boolean; bare?: boolean }) {
+export function DockerfileCard({ appId, deploying, bare, fromGit }: { appId: number; deploying?: boolean; bare?: boolean; fromGit?: boolean }) {
   const qc = useQueryClient();
   const df = useQuery({ queryKey: ["apps", appId, "dockerfile"], queryFn: () => api.appDockerfile(appId) });
   const [text, setText] = useState("");
@@ -32,7 +32,7 @@ export function DockerfileCard({ appId, deploying, bare }: { appId: number; depl
         {lps ? (
           <>
             <p className="text-ink-muted">
-              Stored in LPS (your project folder is not changed). Edit it and press <b>Save &amp; redeploy</b>.
+              Stored in LPS ({fromGit ? "the repository" : "your project folder"} is not changed). Edit it and press <b>Save &amp; redeploy</b>.
             </p>
             <TextArea
               aria-label="Dockerfile"
@@ -69,7 +69,15 @@ export function DockerfileCard({ appId, deploying, bare }: { appId: number; depl
         ) : d.projectHasDockerfile ? (
           <>
             <p className="text-ink-muted">
-              Using the <code>Dockerfile</code> in your project folder. Edit it in your editor, then press <b>Redeploy</b>.
+              {fromGit ? (
+                <>
+                  Using the <code>Dockerfile</code> from the repository (as of the last deploy). Change it with a commit, then press <b>Redeploy</b>.
+                </>
+              ) : (
+                <>
+                  Using the <code>Dockerfile</code> in your project folder. Edit it in your editor, then press <b>Redeploy</b>.
+                </>
+              )}
             </p>
             <LogView text={d.dockerfile} className="!max-h-[28rem]" />
           </>

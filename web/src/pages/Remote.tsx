@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type RemoteView } from "../api";
-import { ActionBox, Button, Card, CopyField, ErrorBox, PageHeader, StateBadge, Switch } from "../components/ui";
+import { Link } from "react-router-dom";
+import { ActionBox, Button, Callout, Card, CopyField, ErrorBox, PageHeader, StateBadge, Switch } from "../components/ui";
 
 type StepState = "done" | "todo" | "blocked";
 
@@ -35,6 +36,7 @@ function Step({
 }
 
 export function Remote() {
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const qc = useQueryClient();
   const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote, refetchInterval: 5000 });
   const update = (v: RemoteView) => {
@@ -64,6 +66,12 @@ export function Remote() {
   return (
     <>
       <PageHeader sheet="Sheet 04 — Remote access" title="Reach this PC from anywhere" />
+      {me.data && !me.data.twoFactor && (
+        <Callout intent="warning">
+          <b>Turn on two-factor sign-in first.</b> With remote access, anyone who gets your password could reach this dashboard from another device on
+          your tailnet. <Link to="/account">Set up two-factor sign-in</Link> (takes a minute with an authenticator app).
+        </Callout>
+      )}
       <Card
         title="Remote access with Tailscale"
         marks

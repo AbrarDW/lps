@@ -2,7 +2,10 @@
 
 export type State = "running" | "stopped" | "missing" | "provisioning" | "error";
 
-export interface User { id: number; username: string; createdAt: string }
+export interface User { id: number; username: string; createdAt: string; twoFactor?: boolean }
+
+/** Password accepted, but a two-factor code is needed to finish signing in. */
+export interface TwoFactorChallenge { twoFactorRequired: true; ticket: string }
 
 export interface VPS {
   id: number;
@@ -29,7 +32,11 @@ export interface Deployment {
   log: string;
   startedAt: string;
   finishedAt: string | null;
+  commitHash?: string;
+  commitMessage?: string;
 }
+
+export interface GitCommit { hash: string; message: string; author: string; when: string; branch: string }
 
 export interface AppItem {
   id: number;
@@ -57,7 +64,12 @@ export interface AppItem {
   localUrl?: string;
   /** Name-based address on the tailnet: https://<pc>.ts.net:8080/<app>/ */
   pathUrl?: string;
-  sourceKind: "pc" | "vps";
+  sourceKind: "pc" | "vps" | "git";
+  gitUrl: string;
+  gitBranch: string;
+  autoDeploy: boolean;
+  lastCommit: string;
+  hasGitToken?: boolean;
   vpsPath: string;
   packages: string;
   installCmd: string;
@@ -212,7 +224,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   setupStatus: () => request<{ needsSetup: boolean }>("GET", "/setup"),
   setup: (username: string, password: string) => request<User>("POST", "/setup", { username, password }),
-  login: (username: string, password: string) => request<User>("POST", "/auth/login", { username, password }),
+  login: (username: string, password: string) => request<User | TwoFactorChallenge>("POST", "/auth/login", { username, password }),
+  login2fa: (ticket: string, code: string) => request<User>("POST", "/auth/login/2fa", { ticket, code }),
+  twoFactor: () => request<{ enabled: boolean; recoveryCodesLeft: number }>("GET", "/auth/2fa"),
+  setup2fa: (password: string) => request<{ secret: string; uri: string; qr: string }>("POST", "/auth/2fa/setup", { password }),
+  enable2fa: (code: string) => request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/enable", { code }),
+  disable2fa: (password: string, code: string) => request<void>("POST", "/auth/2fa/disable", { password, code }),
+  newRecoveryCodes: (password: string, code: string) => request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/recovery-codes", { password, code }),
   logout: () => request<void>("POST", "/auth/logout"),
   me: () => request<User>("GET", "/auth/me"),
   system: () => request<SystemInfo>("GET", "/system"),
@@ -237,7 +255,11 @@ export const api = {
     dockerfile?: string;
     saveToProject?: boolean;
     vpsId?: number;
-    sourceKind?: "pc" | "vps";
+    sourceKind?: "pc" | "vps" | "git";
+    gitUrl?: string;
+    gitBranch?: string;
+    gitToken?: string;
+    autoDeploy?: boolean;
     vpsPath?: string;
     packages?: string;
     installCmd?: string;
@@ -245,6 +267,9 @@ export const api = {
   }) => request<AppItem>("POST", "/apps", a),
   appEnv: (id: number) => request<EnvVarView[]>("GET", `/apps/${id}/env`),
   setAppEnv: (id: number, vars: EnvVarInput[]) => request<EnvVarView[]>("PUT", `/apps/${id}/env`, { vars }),
+  detectGit: (url: string, branch: string, token: string) =>
+    request<DetectResult & { commit: GitCommit }>("POST", "/apps/detect-git", { url, branch, token }),
+  setAppGit: (id: number, g: { branch: string; token?: string; clearToken?: boolean; autoDeploy: boolean }) => request<AppItem>("PUT", `/apps/${id}/git`, g),
   appTemplates: () => request<Detection[]>("GET", "/apps/templates"),
   setAppRunConfig: (id: number, c: { packages: string; installCmd: string; startCmd: string }) =>
     request<AppItem>("PUT", `/apps/${id}/run-config`, c),

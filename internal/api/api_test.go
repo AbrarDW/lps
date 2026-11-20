@@ -223,6 +223,7 @@ func setupWith(t *testing.T, tp tunnel.Provider) *harness {
 	cfg := DefaultConfig()
 	ui := fstest.MapFS{"index.html": {Data: []byte("<html>lps</html>")}}
 	cfg.DashboardPort = 7070
+	cfg.DataDir = t.TempDir()
 	srv := New(cfg, st, eng, tp, ui, nil)
 	ts := httptest.NewServer(srv.Handler())
 	jar, _ := cookiejar.New(nil)
