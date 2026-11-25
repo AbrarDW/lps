@@ -66,6 +66,22 @@ func validateResources(cpus float64, mem int) error {
 	return nil
 }
 
+// validateSSHKey checks an OpenSSH public key ("" is allowed).
+func validateSSHKey(key string) error {
+	if key == "" {
+		return nil
+	}
+	if strings.ContainsAny(key, "\r\n") {
+		return errors.New("sshPublicKey must be a single line (one key)")
+	}
+	for _, t := range keyTypes {
+		if strings.HasPrefix(key, t) {
+			return nil
+		}
+	}
+	return errors.New("sshPublicKey must be an OpenSSH public key (e.g. the contents of id_ed25519.pub)")
+}
+
 func (req *createVPSReq) validate() error {
 	if !nameRe.MatchString(req.Name) {
 		return errors.New("name must be 2-31 chars: lowercase letters, digits and '-'")
@@ -77,19 +93,8 @@ func (req *createVPSReq) validate() error {
 	if req.SSHPublicKey == "" && req.Password == "" {
 		return errors.New("provide an SSH public key, a password, or both")
 	}
-	if req.SSHPublicKey != "" {
-		if strings.ContainsAny(req.SSHPublicKey, "\r\n") {
-			return errors.New("sshPublicKey must be a single line (one key)")
-		}
-		ok := false
-		for _, t := range keyTypes {
-			if strings.HasPrefix(req.SSHPublicKey, t) {
-				ok = true
-			}
-		}
-		if !ok {
-			return errors.New("sshPublicKey must be an OpenSSH public key (e.g. the contents of id_ed25519.pub)")
-		}
+	if err := validateSSHKey(req.SSHPublicKey); err != nil {
+		return err
 	}
 	if req.Password != "" && (len(req.Password) < 8 || strings.ContainsAny(req.Password, "\r\n:")) {
 		return errors.New("password must be at least 8 characters and contain no ':' or newlines")

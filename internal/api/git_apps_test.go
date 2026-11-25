@@ -194,7 +194,9 @@ func TestGitAppInVPS(t *testing.T) {
 	}
 	got := h.waitDeployed(fmt.Sprintf("/api/apps/%d", a.ID))
 	if got.LastDeploy.Status != store.DeployRunning || got.LastCommit == "" {
-		t.Fatalf("deploy: %+v", got)
+		var ds []store.Deployment
+		h.do("GET", fmt.Sprintf("/api/apps/%d/deployments", a.ID), nil, &ds)
+		t.Fatalf("deploy: %s %q %+v", got.LastDeploy.Status, got.LastCommit, ds)
 	}
 	files := h.eng.snapshot().copies["/home/dev/apps/api.new"]
 	slices.Sort(files)

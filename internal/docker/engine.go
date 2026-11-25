@@ -103,6 +103,14 @@ type Engine interface {
 	TagImage(ctx context.Context, src, dst string) error
 	// RemoveSnapshotImage deletes a snapshot image; a missing one is not an error.
 	RemoveSnapshotImage(ctx context.Context, ref string) error
+	// SaveImage writes an image as a docker save archive.
+	SaveImage(ctx context.Context, ref string, w io.Writer) error
+	// LoadImage loads the images in a docker save archive.
+	LoadImage(ctx context.Context, r io.Reader) error
+	// ExportVolume writes a volume's files as a tar archive.
+	ExportVolume(ctx context.Context, vol string, w io.Writer) error
+	// ImportVolume creates vol and extracts an ExportVolume archive into it.
+	ImportVolume(ctx context.Context, vol string, r io.Reader, labels map[string]string) error
 
 	// EnsureQuickLink starts (if needed) the cloudflared container giving an
 	// app a public trycloudflare.com address; a running one is kept.

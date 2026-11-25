@@ -328,12 +328,18 @@ func (s *Server) startDeploy(a *store.App) (*store.Deployment, error) {
 		} else {
 			fmt.Fprintf(buf, "\n[lps] deployed; serving on %s:%d\n", s.cfg.BindIP, a.HostPort)
 		}
+		// Record the commit before the deploy shows as finished, so nothing
+		// sees a running deploy without it.
+		hash := ""
+		if err == nil {
+			hash = s.finishGitDeploy(a, d)
+		}
 		if ferr := s.store.FinishDeployment(s.ctx, d.ID, status, image, buf.String()); ferr != nil {
 			s.log.Error("finish deployment", "err", ferr)
 		}
 		if err != nil {
 			s.fail(nil, "app.deploy_failed", subjApp, a.ID, a.Name, "Deploy #%d of %s failed: %s", d.ID, a.Name, firstLine(err.Error()))
-		} else if hash := s.finishGitDeploy(a, d); hash != "" {
+		} else if hash != "" {
 			s.info(nil, "app.deployed", subjApp, a.ID, a.Name, "Deploy #%d of %s is running (commit %s)", d.ID, a.Name, shortHash(hash))
 		} else {
 			s.info(nil, "app.deployed", subjApp, a.ID, a.Name, "Deploy #%d of %s is running", d.ID, a.Name)

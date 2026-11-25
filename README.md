@@ -237,6 +237,9 @@ Each VPS page has a **Snapshots** card. A snapshot saves **everything** in the V
 - **Restore** puts the VPS back exactly as it was: files, users, passwords, SSH keys and host keys. LPS takes a snapshot of the current state first (*Before restoring “…”*), so a restore can be undone. Apps running in the VPS come back by themselves.
 - **New VPS from it** makes a copy with a new name and SSH port.
 - **Delete** removes a snapshot. Deleting a VPS deletes its snapshots too.
+- **Automatic snapshots:** under the snapshot list, choose **Every day** or **Every week**, the hour (in this PC's time) and how many to keep. LPS takes them while it's running. If the PC was off at that time, it takes one when LPS starts again. Only automatic snapshots (marked *auto*) are deleted to keep the newest ones. Snapshots you take yourself stay until you delete them.
+- **Export to file** saves a snapshot as one `.lpsnap` file in LPS's data folder (`exports`). From there you can **Download** it or copy it anywhere, such as a USB drive or a backup folder. The file holds the system files, `/home` (with owners and permissions) and the VPS's settings, compressed.
+- **Create from a file:** on **New VPS → Or create it from a snapshot file**, pick a `.lpsnap` file (from this PC or another one) and a name. The new VPS has the same files, software, user, password and SSH keys, with its own SSH port. This is how you move a VPS to another PC.
 
 ### VPS lifecycle
 
@@ -503,7 +506,7 @@ flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name,<br/>✅ your own domain"]
     m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA,<br/>✅ Cloudflare quick links"]
-    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots"]
+    m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots,<br/>✅ scheduled + exported snapshots"]
     m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
@@ -511,7 +514,7 @@ flowchart LR
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). ✅ addresses on your own domain through Cloudflare Tunnel.
 3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. ✅ Cloudflare quick links (public demo links, no account). ✅ your own domain through Cloudflare Tunnel.
-4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). Next: scheduled snapshots and exporting them as files.
+4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). ✅ automatic snapshots and snapshot files (export, import on another PC).
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. Next: Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 
 ## License

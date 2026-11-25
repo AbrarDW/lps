@@ -24,6 +24,7 @@ const stateRestoring = "restoring"
 // snapshotView is a snapshot as the API returns it.
 type snapshotView struct {
 	*store.Snapshot
+	Export exportView `json:"export"`
 }
 
 // loadSnapshot loads a VPS and one of its snapshots from the URL.
@@ -57,7 +58,7 @@ func (s *Server) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]snapshotView, 0, len(list))
 	for _, sn := range list {
-		out = append(out, snapshotView{Snapshot: sn})
+		out = append(out, snapshotView{Snapshot: sn, Export: s.exportView(v, sn)})
 	}
 	writeJSON(w, 200, out)
 }
@@ -171,7 +172,7 @@ func (s *Server) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
 		}
 		s.info(nil, "vps.snapshot_ready", subjVPS, vc.ID, vc.Name, "Snapshot %s of %s is ready (%s)", quoted(label), vc.Name, humanBytes(snc.SystemBytes+snc.HomeBytes))
 	}()
-	writeJSON(w, http.StatusAccepted, snapshotView{Snapshot: sn})
+	writeJSON(w, http.StatusAccepted, snapshotView{Snapshot: sn, Export: exportView{State: "none"}})
 }
 
 // runFromSnapshot creates and starts the VPS's container from a snapshot,
@@ -372,6 +373,7 @@ func (s *Server) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.removeExport(v, sn)
 	s.info(r, "vps.snapshot_deleted", subjVPS, v.ID, v.Name, "Deleted snapshot %s of %s", quoted(sn.Label), v.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -384,6 +386,7 @@ func (s *Server) deleteVPSSnapshots(ctx context.Context, v *store.VPS) error {
 	}
 	var errs []error
 	for _, sn := range list {
+		s.removeExport(v, sn)
 		if err := s.deleteSnapshotData(ctx, sn); err != nil {
 			errs = append(errs, fmt.Errorf("snapshot %s: %w", quoted(sn.Label), err))
 		}
