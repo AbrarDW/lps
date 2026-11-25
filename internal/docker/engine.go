@@ -103,6 +103,16 @@ type Engine interface {
 	TagImage(ctx context.Context, src, dst string) error
 	// RemoveSnapshotImage deletes a snapshot image; a missing one is not an error.
 	RemoveSnapshotImage(ctx context.Context, ref string) error
+
+	// EnsureQuickLink starts (if needed) the cloudflared container giving an
+	// app a public trycloudflare.com address; a running one is kept.
+	EnsureQuickLink(ctx context.Context, spec QuickLinkSpec) error
+	// QuickLinkStatus reports an app's quick link and its address.
+	QuickLinkStatus(ctx context.Context, app string) (QuickLink, error)
+	// RemoveQuickLink removes an app's quick link; a missing one is not an error.
+	RemoveQuickLink(ctx context.Context, app string) error
+	// QuickLinkApps lists the apps that have a quick link container.
+	QuickLinkApps(ctx context.Context) ([]string, error)
 }
 
 // VPSVolumeName is the persistent /home volume for a VPS.

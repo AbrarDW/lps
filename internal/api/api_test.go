@@ -44,6 +44,7 @@ type fakeEngine struct {
 	appSpecs      []docker.AppSpec
 	images        map[string]bool
 	copies        []string
+	quick         *fakeQuick
 }
 
 func newFake() *fakeEngine {

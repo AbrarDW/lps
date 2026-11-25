@@ -200,6 +200,15 @@ Every app has an **Environment** tab. Add variables one by one or **paste a `.en
 - **Apps in a VPS:** they're given to the install and start commands. LPS sets `PORT`, `HOST` and `HOME` itself, so those names are refused there; names starting with `LPS_` are reserved everywhere.
 - **Secret values** are never sent back to the browser after saving, and never appear in deploy logs or the activity feed (only the variable names do). They are stored in LPS's database on this PC, and anyone who can run `docker inspect` on this PC can read a container's environment.
 
+### Quick public links (Cloudflare)
+
+Share an app with anyone, without Tailscale or a Cloudflare account: on the app's page, turn on **Public link → Cloudflare quick link**. A few seconds later the app has an address like `https://some-random-words.trycloudflare.com`.
+
+- LPS runs Cloudflare's `cloudflared` ([Quick Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/do-more-with-tunnels/trycloudflare/)) in a small container (`lps-cf-<app>`) next to the app. The first time, Docker downloads its image (about 100 MB on disk). It connects **out** to Cloudflare, so no ports are opened on this PC or your router.
+- It works for container apps and apps in a VPS. The address stays the same across redeploys. It changes when the link is turned off and on, or after Docker or the PC restarts.
+- Anyone with the address can open the app, so only turn it on for apps that are meant to be seen. The dashboard and SSH are never shared this way.
+- Quick links are meant for demos and testing: Cloudflare gives them no uptime guarantee and limits them (for example, no Server-Sent Events). For a fixed address, use a Tailscale public link (below) or, later, your own domain.
+
 ### Snapshots
 
 Each VPS page has a **Snapshots** card. A snapshot saves **everything** in the VPS: installed software and settings (the container's files, saved as an image) and `/home` (copied). Snapshots stay in Docker on this PC.
@@ -473,7 +482,7 @@ Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works
 flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name"]
-    m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA →<br/>Cloudflare Quick Tunnel"]
+    m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA,<br/>✅ Cloudflare quick links"]
     m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots"]
     m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
     m1 --> m2 --> m3 --> m4 --> m5
@@ -481,7 +490,7 @@ flowchart LR
 
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). Next: real hostnames per app through Tailscale Services or Cloudflare Tunnel.
-3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. Next: Cloudflare Quick Tunnel for instant public demo links, then Cloudflare Tunnel with your own domain.
+3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. ✅ Cloudflare quick links (public demo links, no account). Next: Cloudflare Tunnel with your own domain.
 4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). Next: scheduled snapshots and exporting them as files.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. Next: Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 

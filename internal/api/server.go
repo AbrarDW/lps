@@ -94,6 +94,7 @@ type Server struct {
 	snapping  map[int64]bool // VPSes a snapshot is being taken of
 	updater   *update.Checker
 	updates   updateState
+	quick     quickState
 }
 
 type taskInfo struct {
@@ -146,10 +147,12 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 		go s.updateLoop()
 	}
 	s.gitKick = make(chan struct{}, 1)
-	s.wg.Add(3)
+	s.quick.kick = make(chan struct{}, 1)
+	s.wg.Add(4)
 	go s.vpsAppsLoop()
 	go s.statsLoop()
 	go s.gitPollLoop()
+	go s.quickLoop()
 	return s
 }
 
@@ -223,6 +226,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps/{id}/logs", s.handleAppLogs)
 			r.Get("/apps/{id}/deployments", s.handleListDeployments)
 			r.Put("/apps/{id}/public", s.handleSetAppPublic)
+			r.Put("/apps/{id}/quick-link", s.handleSetQuickLink)
 			r.Get("/apps/{id}/dockerfile", s.handleGetAppDockerfile)
 			r.Put("/apps/{id}/dockerfile", s.handleSetAppDockerfile)
 			r.Put("/apps/{id}/run-config", s.handleSetAppRunConfig)
