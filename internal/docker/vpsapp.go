@@ -106,14 +106,7 @@ func (c *Client) CopyTo(ctx context.Context, id, dir string, content io.Reader) 
 // the VPS container to it (VPSes created before LPS used the network are
 // attached here, while running).
 func (c *Client) EnsureNetwork(ctx context.Context, vpsContainer string) error {
-	if _, err := c.cli.NetworkInspect(ctx, NetworkName, client.NetworkInspectOptions{}); cerrdefs.IsNotFound(err) {
-		_, err = c.cli.NetworkCreate(ctx, NetworkName, client.NetworkCreateOptions{
-			Driver: "bridge", Labels: map[string]string{"lps.managed": "true"},
-		})
-		if err != nil && !cerrdefs.IsConflict(err) {
-			return fmt.Errorf("create network: %w", err)
-		}
-	} else if err != nil {
+	if err := c.ensureNetwork(ctx); err != nil {
 		return err
 	}
 	insp, err := c.cli.ContainerInspect(ctx, vpsContainer, client.ContainerInspectOptions{})
@@ -127,6 +120,21 @@ func (c *Client) EnsureNetwork(ctx context.Context, vpsContainer string) error {
 	}
 	_, err = c.cli.NetworkConnect(ctx, NetworkName, client.NetworkConnectOptions{Container: vpsContainer})
 	return err
+}
+
+// ensureNetwork creates lps-net if it is missing.
+func (c *Client) ensureNetwork(ctx context.Context) error {
+	if _, err := c.cli.NetworkInspect(ctx, NetworkName, client.NetworkInspectOptions{}); cerrdefs.IsNotFound(err) {
+		_, err = c.cli.NetworkCreate(ctx, NetworkName, client.NetworkCreateOptions{
+			Driver: "bridge", Labels: map[string]string{"lps.managed": "true"},
+		})
+		if err != nil && !cerrdefs.IsConflict(err) {
+			return fmt.Errorf("create network: %w", err)
+		}
+	} else if err != nil {
+		return err
+	}
+	return nil
 }
 
 // CreateRelay implements Engine. The relay runs the VPS image (already

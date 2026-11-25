@@ -9,6 +9,8 @@ package docker
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"regexp"
@@ -44,7 +46,10 @@ type QuickLinkSpec struct {
 	Port   int    // port the app listens on inside Target
 }
 
-func (s QuickLinkSpec) origin() string { return fmt.Sprintf("http://%s:%d", s.Target, s.Port) }
+func (s QuickLinkSpec) origin() string { return s.Origin() }
+
+// Origin is the URL the app is reached at from lps-net.
+func (s QuickLinkSpec) Origin() string { return fmt.Sprintf("http://%s:%d", s.Target, s.Port) }
 
 // Quick link states.
 const (
@@ -227,4 +232,138 @@ func (c *Client) QuickLinkApps(ctx context.Context) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// TunnelConnectorName is the container running the user's Cloudflare Tunnel
+// (custom domains). There is one per PC; its routes live in Cloudflare.
+const TunnelConnectorName = "lps-cf-tunnel"
+
+const kindConnector = "cftunnel"
+
+// Connector states.
+const (
+	ConnectorConnected  = "connected"
+	ConnectorConnecting = "connecting"
+)
+
+// Connector is the live state of the tunnel connector.
+type Connector struct {
+	State string `json:"state"` // connected | connecting | error | missing
+	Error string `json:"error,omitempty"`
+}
+
+func tokenTag(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:8])
+}
+
+// EnsureTunnelConnector implements Engine: it runs cloudflared for the
+// tunnel token (on lps-net, so routes can name app containers). A running
+// connector for the same token is left alone.
+func (c *Client) EnsureTunnelConnector(ctx context.Context, token string) error {
+	if err := c.ensureNetwork(ctx); err != nil {
+		return err
+	}
+	insp, err := c.cli.ContainerInspect(ctx, TunnelConnectorName, client.ContainerInspectOptions{})
+	switch {
+	case err == nil && insp.Container.Config != nil && insp.Container.Config.Labels["lps.token"] == tokenTag(token):
+		if insp.Container.State != nil && (insp.Container.State.Running || insp.Container.State.Restarting) {
+			return nil
+		}
+		return c.Start(ctx, insp.Container.ID)
+	case err == nil:
+		if err := c.Remove(ctx, insp.Container.ID); err != nil {
+			return err
+		}
+	case !cerrdefs.IsNotFound(err):
+		return err
+	}
+	img := quickLinkImage()
+	if err := c.ensureImage(ctx, img); err != nil {
+		return err
+	}
+	lbls := labels(kindConnector, "tunnel")
+	lbls["lps.token"] = tokenTag(token)
+	res, err := c.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Name: TunnelConnectorName,
+		Config: &container.Config{
+			Image:  img,
+			Cmd:    []string{"tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:0", "run"},
+			Env:    []string{"TUNNEL_TOKEN=" + token},
+			Labels: lbls,
+		},
+		HostConfig: &container.HostConfig{
+			NetworkMode:   container.NetworkMode(NetworkName),
+			RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
+			Resources:     resources(1, 256),
+		},
+		NetworkingConfig: &network.NetworkingConfig{
+			EndpointsConfig: map[string]*network.EndpointSettings{NetworkName: {}},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return c.Start(ctx, res.ID)
+}
+
+// TunnelConnectorStatus implements Engine.
+func (c *Client) TunnelConnectorStatus(ctx context.Context) (Connector, error) {
+	insp, err := c.cli.ContainerInspect(ctx, TunnelConnectorName, client.ContainerInspectOptions{})
+	if cerrdefs.IsNotFound(err) {
+		return Connector{State: QuickMissing}, nil
+	} else if err != nil {
+		return Connector{}, err
+	}
+	st := insp.Container.State
+	opts := client.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Tail: "300"}
+	if st != nil && st.Running && st.StartedAt != "" {
+		if t, err := time.Parse(time.RFC3339Nano, st.StartedAt); err == nil {
+			opts.Since = t.Add(-time.Second).Format(time.RFC3339Nano)
+		}
+	}
+	rc, err := c.cli.ContainerLogs(ctx, insp.Container.ID, opts)
+	if err != nil {
+		return Connector{}, err
+	}
+	defer rc.Close()
+	var out bytes.Buffer
+	if _, err := stdcopy.StdCopy(&out, &out, rc); err != nil {
+		return Connector{}, err
+	}
+	connected, errMsg := ParseConnectorLog(out.String())
+	switch {
+	case st != nil && st.Running && connected:
+		return Connector{State: ConnectorConnected}, nil
+	case st != nil && st.Running:
+		return Connector{State: ConnectorConnecting, Error: errMsg}, nil
+	default:
+		if errMsg == "" {
+			errMsg = "the connector stopped; LPS starts it again within a minute"
+		}
+		return Connector{State: QuickError, Error: errMsg}, nil
+	}
+}
+
+// ParseConnectorLog reports whether cloudflared registered a connection to
+// Cloudflare, and its last error.
+func ParseConnectorLog(log string) (connected bool, errMsg string) {
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, "Registered tunnel connection") {
+			connected = true
+		}
+		l := strings.TrimSpace(line)
+		for i := 0; i < 2; i++ {
+			l = logTimeRe.ReplaceAllString(l, "")
+		}
+		if strings.Contains(line, " ERR ") || strings.HasPrefix(l, "failed to") || strings.Contains(l, "Unauthorized") {
+			errMsg = l
+		}
+	}
+	return connected, errMsg
+}
+
+// RemoveTunnelConnector implements Engine; a missing connector is not an error.
+func (c *Client) RemoveTunnelConnector(ctx context.Context) error {
+	return c.Remove(ctx, TunnelConnectorName)
 }

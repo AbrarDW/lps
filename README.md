@@ -209,6 +209,26 @@ Share an app with anyone, without Tailscale or a Cloudflare account: on the app'
 - Anyone with the address can open the app, so only turn it on for apps that are meant to be seen. The dashboard and SSH are never shared this way.
 - Quick links are meant for demos and testing: Cloudflare gives them no uptime guarantee and limits them (for example, no Server-Sent Events). For a fixed address, use a Tailscale public link (below) or, later, your own domain.
 
+### Your own domain (Cloudflare Tunnel)
+
+Give apps a permanent address on a domain you own, like `https://blog.yourdomain.com`, reachable by anyone, with HTTPS from Cloudflare. It works on Cloudflare's free plan and doesn't need Tailscale.
+
+1. The domain must use Cloudflare for its DNS ([add it to Cloudflare](https://dash.cloudflare.com/) if it doesn't yet).
+2. In Cloudflare, open **My Profile → API Tokens → Create Token → Create Custom Token** and give it these permissions, for your domain (Zone Resources):
+   - Account · Cloudflare Tunnel · Edit
+   - Zone · DNS · Edit
+   - Zone · Zone · Read
+3. In LPS, open **Remote access → Your domain · Cloudflare**, paste the token and press **Connect Cloudflare**.
+4. On an app's page, under **Public link → Your domain**, enter an address such as `blog.yourdomain.com` and press **Use this address**.
+
+How it works:
+
+- When you connect, LPS creates a Cloudflare Tunnel in your account (named `lps-<pc>-…`) and runs its connector, `cloudflared`, in a container (`lps-cf-tunnel`). The connector only connects **out** to Cloudflare, so no ports are opened on this PC or your router.
+- For each address, LPS adds a proxied DNS record (`CNAME` to the tunnel, with the comment *Managed by LPS*) and a route from that address to the app's container, or to the VPS it runs in. Addresses keep working across redeploys.
+- LPS never touches DNS records it didn't create. If the address already has a record, LPS asks you to remove it first or pick another name.
+- **Remove** on an app deletes its record and route. **Disconnect** deletes every record LPS made, the connector and the tunnel. Deleting an app removes its address.
+- The API token is stored in LPS's database on this PC and is never shown again in the dashboard.
+
 ### Snapshots
 
 Each VPS page has a **Snapshots** card. A snapshot saves **everything** in the VPS: installed software and settings (the container's files, saved as an image) and `/home` (copied). Snapshots stay in Docker on this PC.
@@ -481,7 +501,7 @@ Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works
 ```mermaid
 flowchart LR
     m1["✅ 1. MVP<br/>dashboard, admin,<br/>Linux VPS + SSH,<br/>Dockerfile deploys"]
-    m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name"]
+    m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name,<br/>✅ your own domain"]
     m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA,<br/>✅ Cloudflare quick links"]
     m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots"]
     m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
@@ -489,8 +509,8 @@ flowchart LR
 ```
 
 1. ✅ **MVP:** dashboard, admin account, Linux VPS (Ubuntu and SSH) lifecycle, Dockerfile app deploys with logs, SQLite.
-2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). Next: real hostnames per app through Tailscale Services or Cloudflare Tunnel.
-3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. ✅ Cloudflare quick links (public demo links, no account). Next: Cloudflare Tunnel with your own domain.
+2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). ✅ addresses on your own domain through Cloudflare Tunnel.
+3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. ✅ Cloudflare quick links (public demo links, no account). ✅ your own domain through Cloudflare Tunnel.
 4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). Next: scheduled snapshots and exporting them as files.
 5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. Next: Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
 

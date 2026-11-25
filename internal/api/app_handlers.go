@@ -32,6 +32,8 @@ type appView struct {
 	QuickState string `json:"quickState,omitempty"`
 	QuickURL   string `json:"quickUrl,omitempty"`
 	QuickError string `json:"quickError,omitempty"`
+	// Domain is the app's address on the user's own domain (https://<domain>).
+	Domain string `json:"domain,omitempty"`
 	// HasGitToken tells the UI an access token is stored (it is never returned).
 	HasGitToken bool `json:"hasGitToken,omitempty"`
 	// DockerfileSource is "lps" when LPS's stored Dockerfile is used, "project"
@@ -141,6 +143,9 @@ func (s *Server) appView(r *http.Request, a *store.App) appView {
 	}
 	view.LocalURL = s.localAppURL(a)
 	s.quickView(r.Context(), a, &view)
+	if d, err := s.store.AppDomain(r.Context(), a.ID); err == nil && d != nil {
+		view.Domain = d.Hostname
+	}
 	view.HasGitToken = a.GitToken != ""
 	if dns, active := s.remoteSnapshot(r.Context()); dns != "" {
 		if e, ok := active[a.HostPort]; ok {
@@ -339,6 +344,9 @@ func (s *Server) startDeploy(a *store.App) (*store.Deployment, error) {
 		if err == nil && a.QuickLink {
 			s.kickQuick() // a new app container joins lps-net
 		}
+		if err == nil {
+			s.kickCF() // likewise for an app with its own domain
+		}
 		s.mu.Lock()
 		delete(s.deploying, a.ID)
 		delete(s.liveLogs, d.ID)
@@ -508,6 +516,8 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 		_ = s.engine.Remove(r.Context(), docker.AppContainerName(a.Name))
 		s.pruneImages(a.Name, 0)
 	}
+	// Before the app row goes: its domain row (and so the DNS record id) would go with it.
+	s.dropAppDomain(r.Context(), a)
 	if err := s.store.DeleteApp(r.Context(), a.ID); err != nil {
 		s.internalError(w, err)
 		return

@@ -36,12 +36,9 @@ func (s *Server) kickQuick() {
 
 var errQuickNotDeployed = errors.New("the link starts after the app's first successful deploy")
 
-// quickSpec is where an app's quick link sends visitors: the app's own
-// container, or the VPS it runs in.
-func (s *Server) quickSpec(ctx context.Context, a *store.App) (docker.QuickLinkSpec, error) {
-	if a.ContainerID == "" {
-		return docker.QuickLinkSpec{}, errQuickNotDeployed
-	}
+// originSpec is where requests for an app go: its own container, or the
+// VPS it runs in (by name, on lps-net).
+func (s *Server) originSpec(ctx context.Context, a *store.App) (docker.QuickLinkSpec, error) {
 	if a.InVPS() {
 		v, err := s.store.GetVPS(ctx, a.VPSID)
 		if err != nil {
@@ -50,6 +47,14 @@ func (s *Server) quickSpec(ctx context.Context, a *store.App) (docker.QuickLinkS
 		return docker.QuickLinkSpec{App: a.Name, Target: docker.VPSContainerName(v.Name), Port: a.ContainerPort}, nil
 	}
 	return docker.QuickLinkSpec{App: a.Name, Target: docker.AppContainerName(a.Name), Port: a.ContainerPort}, nil
+}
+
+// quickSpec is originSpec for an app that has been deployed.
+func (s *Server) quickSpec(ctx context.Context, a *store.App) (docker.QuickLinkSpec, error) {
+	if a.ContainerID == "" {
+		return docker.QuickLinkSpec{}, errQuickNotDeployed
+	}
+	return s.originSpec(ctx, a)
 }
 
 // reconcileQuickLinks starts the links that should exist and removes the rest.

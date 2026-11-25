@@ -113,6 +113,14 @@ type Engine interface {
 	RemoveQuickLink(ctx context.Context, app string) error
 	// QuickLinkApps lists the apps that have a quick link container.
 	QuickLinkApps(ctx context.Context) ([]string, error)
+
+	// EnsureTunnelConnector runs cloudflared for the user's Cloudflare Tunnel
+	// (custom domains); a running connector with the same token is kept.
+	EnsureTunnelConnector(ctx context.Context, token string) error
+	// TunnelConnectorStatus reports whether the connector reached Cloudflare.
+	TunnelConnectorStatus(ctx context.Context) (Connector, error)
+	// RemoveTunnelConnector removes the connector; a missing one is not an error.
+	RemoveTunnelConnector(ctx context.Context) error
 }
 
 // VPSVolumeName is the persistent /home volume for a VPS.

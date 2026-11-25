@@ -46,6 +46,8 @@ type Config struct {
 	// UpdateRepo is the GitHub repository whose releases LPS checks for
 	// updates ("" = never check, as in tests).
 	UpdateRepo string
+	// CloudflareAPI overrides Cloudflare's API address (tests); "" = the real one.
+	CloudflareAPI string
 	// Quit stops the running LPS (the Windows desktop app sets it); needed to
 	// install updates.
 	Quit func()
@@ -95,6 +97,7 @@ type Server struct {
 	updater   *update.Checker
 	updates   updateState
 	quick     quickState
+	cf        cfState
 }
 
 type taskInfo struct {
@@ -148,11 +151,13 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 	}
 	s.gitKick = make(chan struct{}, 1)
 	s.quick.kick = make(chan struct{}, 1)
-	s.wg.Add(4)
+	s.cf.kick = make(chan struct{}, 1)
+	s.wg.Add(5)
 	go s.vpsAppsLoop()
 	go s.statsLoop()
 	go s.gitPollLoop()
 	go s.quickLoop()
+	go s.cfLoop()
 	return s
 }
 
@@ -227,6 +232,11 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/apps/{id}/deployments", s.handleListDeployments)
 			r.Put("/apps/{id}/public", s.handleSetAppPublic)
 			r.Put("/apps/{id}/quick-link", s.handleSetQuickLink)
+			r.Put("/apps/{id}/domain", s.handleSetAppDomain)
+			r.Delete("/apps/{id}/domain", s.handleDeleteAppDomain)
+			r.Get("/cloudflare", s.handleGetCloudflare)
+			r.Post("/cloudflare", s.handleConnectCloudflare)
+			r.Delete("/cloudflare", s.handleDisconnectCloudflare)
 			r.Get("/apps/{id}/dockerfile", s.handleGetAppDockerfile)
 			r.Put("/apps/{id}/dockerfile", s.handleSetAppDockerfile)
 			r.Put("/apps/{id}/run-config", s.handleSetAppRunConfig)

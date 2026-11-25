@@ -16,6 +16,7 @@ import {
   CornerMarks,
   ErrorBox,
   Icon,
+  Input,
   LogView,
   StateBadge,
   Switch,
@@ -102,6 +103,10 @@ export function AppDetail() {
     deployments.data?.find((d) => d.id === selected) ?? deployments.data?.[0];
   const running = a.state === "running";
   const inVPS = a.vpsId > 0;
+  const domainUrl = a.domain ? `https://${a.domain}` : undefined;
+  const publicLinks = [domainUrl, a.quickUrl, a.publicUrl].filter(
+    Boolean,
+  ) as string[];
   const source =
     a.sourceKind === "git"
       ? `${a.gitUrl} (${a.gitBranch || "default branch"}${a.lastCommit ? ` @ ${a.lastCommit.slice(0, 7)}` : ""})`
@@ -127,7 +132,9 @@ export function AppDetail() {
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="m-0 text-[28px] font-semibold">{a.name}</h1>
             <StateBadge state={deploying ? "building" : a.state} />
-            {(a.publicUrl || a.quickUrl) && <Tag intent="warning">Public</Tag>}
+            {(a.publicUrl || a.quickUrl || a.domain) && (
+              <Tag intent="warning">Public</Tag>
+            )}
             {inVPS && (
               <Link to={`/vps/${a.vpsId}`} className="no-underline">
                 <Tag intent="primary">VPS {a.vpsName}</Tag>
@@ -226,14 +233,14 @@ export function AppDetail() {
             </span>
           </div>
         )}
-        {a.quickUrl || a.publicUrl ? (
+        {domainUrl || a.quickUrl || a.publicUrl ? (
           <Endpoint
             label="Anyone · public link"
-            href={(a.quickUrl ?? a.publicUrl)!}
-            text={(a.quickUrl ?? a.publicUrl)!}
+            href={publicLinks[0]}
+            text={publicLinks[0]}
             alt={
-              a.quickUrl && a.publicUrl
-                ? { href: a.publicUrl, text: a.publicUrl }
+              publicLinks[1]
+                ? { href: publicLinks[1], text: publicLinks[1] }
                 : undefined
             }
             warn
@@ -395,6 +402,7 @@ export function AppDetail() {
         )}
         <Card title="Public link" className="flex-[1_1_380px]">
           <div className="flex flex-col gap-5 text-[13px]">
+            <DomainSection app={a} />
             <QuickLinkSection
               app={a}
               pending={setQuick.isPending}
@@ -631,6 +639,125 @@ function QuickLinkSection({
         is turned off and on, or after Docker or this PC restarts. Meant for
         sharing and testing: Cloudflare gives no uptime guarantee.
       </span>
+    </div>
+  );
+}
+
+/** The app's address on the user's own domain (Cloudflare Tunnel). */
+function DomainSection({ app: a }: { app: AppItem }) {
+  const qc = useQueryClient();
+  const cf = useQuery({ queryKey: ["cloudflare"], queryFn: api.cloudflare });
+  const [host, setHost] = useState("");
+  const done = (x: AppItem) => {
+    qc.setQueryData(["apps", a.id], x);
+    qc.invalidateQueries({ queryKey: ["apps"] });
+    qc.invalidateQueries({ queryKey: ["cloudflare"] });
+    setHost("");
+  };
+  const set = useMutation({
+    mutationFn: () => api.setAppDomain(a.id, host),
+    onSuccess: done,
+  });
+  const remove = useMutation({
+    mutationFn: () => api.removeAppDomain(a.id),
+    onSuccess: done,
+  });
+  const zones = cf.data?.zones ?? [];
+  return (
+    <div className="flex flex-col gap-3">
+      <span className="label-mono text-[10px] text-ink-faint">
+        Your domain · Cloudflare
+      </span>
+      {!cf.data?.connected && !a.domain ? (
+        <p className="m-0 text-ink-muted">
+          Give this app an address like <code>blog.yourdomain.com</code>:{" "}
+          <Link to="/remote">connect your Cloudflare account</Link> first.
+        </p>
+      ) : (
+        <>
+          {a.domain && (
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href={`https://${a.domain}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono break-all"
+              >
+                https://{a.domain}
+              </a>
+              <Button
+                variant="minimal"
+                size="sm"
+                disabled={remove.isPending}
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Remove https://${a.domain}? The address stops working and LPS deletes its DNS record.`,
+                    )
+                  )
+                    remove.mutate();
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          )}
+          {cf.data?.connected && (
+            <form
+              className="flex flex-col gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (
+                  confirm(
+                    `Anyone on the internet will be able to open this app at https://${host.trim()}. Continue?`,
+                  )
+                )
+                  set.mutate();
+              }}
+            >
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  aria-label="Address on your domain"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  placeholder={
+                    zones.length
+                      ? `${a.name}.${zones[0].name}`
+                      : "blog.example.com"
+                  }
+                  list={`zones-${a.id}`}
+                  spellCheck={false}
+                  className="min-w-0 flex-[1_1_220px] font-mono"
+                />
+                <datalist id={`zones-${a.id}`}>
+                  {zones.map((z) => (
+                    <option key={z.id} value={`${a.name}.${z.name}`} />
+                  ))}
+                </datalist>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={set.isPending || !host.trim()}
+                >
+                  {set.isPending
+                    ? "Saving…"
+                    : a.domain
+                      ? "Change address"
+                      : "Use this address"}
+                </Button>
+              </div>
+              <span className="text-xs text-ink-muted">
+                Any name on{" "}
+                {zones.length
+                  ? zones.map((z) => z.name).join(", ")
+                  : "your Cloudflare domains"}
+                . LPS adds the DNS record; HTTPS works within a minute.
+              </span>
+            </form>
+          )}
+          <ErrorBox error={set.error ?? remove.error} />
+        </>
+      )}
     </div>
   );
 }

@@ -45,6 +45,7 @@ type fakeEngine struct {
 	images        map[string]bool
 	copies        []string
 	quick         *fakeQuick
+	connector     string // tunnel token the fake connector runs with
 }
 
 func newFake() *fakeEngine {
@@ -216,7 +217,9 @@ type harness struct {
 
 func setup(t *testing.T) *harness { return setupWith(t, nil) }
 
-func setupWith(t *testing.T, tp tunnel.Provider) *harness {
+func setupWith(t *testing.T, tp tunnel.Provider) *harness { return setupCfg(t, tp, nil) }
+
+func setupCfg(t *testing.T, tp tunnel.Provider, tweak func(*Config)) *harness {
 	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
@@ -227,6 +230,9 @@ func setupWith(t *testing.T, tp tunnel.Provider) *harness {
 	ui := fstest.MapFS{"index.html": {Data: []byte("<html>lps</html>")}}
 	cfg.DashboardPort = 7070
 	cfg.DataDir = t.TempDir()
+	if tweak != nil {
+		tweak(&cfg)
+	}
 	srv := New(cfg, st, eng, tp, ui, nil)
 	ts := httptest.NewServer(srv.Handler())
 	jar, _ := cookiejar.New(nil)

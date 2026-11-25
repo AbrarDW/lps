@@ -35,3 +35,17 @@ failed to request quick Tunnel: Post "https://api.trycloudflare.com/tunnel": dia
 		t.Fatalf("err = %q", e)
 	}
 }
+
+func TestParseConnectorLog(t *testing.T) {
+	ok := `2026-11-25T15:03:17Z INF Starting tunnel tunnelID=abc
+2026-11-25T15:03:18Z INF Registered tunnel connection connIndex=0 connection=x event=0 ip=198.41.200.33 location=fra08 protocol=quic
+`
+	if c, e := ParseConnectorLog(ok); !c || e != "" {
+		t.Fatalf("connected=%v err=%q", c, e)
+	}
+	bad := `2026-11-25T15:03:17Z ERR Register tunnel error from server side error="Unauthorized: Invalid tunnel secret" connIndex=0
+`
+	if c, e := ParseConnectorLog(bad); c || !strings.Contains(e, "Invalid tunnel secret") {
+		t.Fatalf("connected=%v err=%q", c, e)
+	}
+}

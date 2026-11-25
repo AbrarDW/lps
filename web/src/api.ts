@@ -80,6 +80,8 @@ export interface AppItem {
   quickState?: "starting" | "active" | "error";
   quickUrl?: string;
   quickError?: string;
+  /** Address on the user's own domain (served through their Cloudflare Tunnel). */
+  domain?: string;
   dockerfile: string;
   dockerfileSource: "lps" | "project" | "none";
   /** 0 = the app runs in its own container. */
@@ -246,6 +248,26 @@ export interface ExposureView {
   error?: string;
 }
 
+export interface CloudflareView {
+  connected: boolean;
+  accountName?: string;
+  tunnelName?: string;
+  tunnelId?: string;
+  zones: { id: string; name: string }[];
+  zonesError?: string;
+  connector?: {
+    state: "connected" | "connecting" | "error" | "missing";
+    error?: string;
+  };
+  error?: string;
+  domains: { appId: number; appName: string; hostname: string; url: string }[];
+}
+
+export interface CloudflareAccount {
+  id: string;
+  name: string;
+}
+
 export interface RemoteView {
   provider: string;
   available: boolean;
@@ -296,6 +318,8 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public needsAction?: NeedsAction,
+    /** The full error body, for errors that carry extra data. */
+    public data?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -322,6 +346,7 @@ async function request<T>(
       res.status,
       data.error ?? res.statusText,
       data.needsAction,
+      data,
     );
   return data as T;
 }
@@ -480,6 +505,18 @@ export const api = {
   stats: () => request<Stats>("GET", "/stats"),
 
   remote: () => request<RemoteView>("GET", "/remote"),
+  cloudflare: () => request<CloudflareView>("GET", "/cloudflare"),
+  connectCloudflare: (token: string, accountId?: string) =>
+    request<CloudflareView>("POST", "/cloudflare", { token, accountId }),
+  disconnectCloudflare: () =>
+    request<{ view: CloudflareView; warning?: string }>(
+      "DELETE",
+      "/cloudflare",
+    ),
+  setAppDomain: (id: number, hostname: string) =>
+    request<AppItem>("PUT", `/apps/${id}/domain`, { hostname }),
+  removeAppDomain: (id: number) =>
+    request<AppItem>("DELETE", `/apps/${id}/domain`),
   setRemote: (enabled: boolean) =>
     request<RemoteView>("PUT", "/remote", { enabled }),
   syncRemote: () => request<RemoteView>("POST", "/remote/sync"),

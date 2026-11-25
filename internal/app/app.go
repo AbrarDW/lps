@@ -102,6 +102,7 @@ func Run(ctx context.Context, o Options) error {
 	cfg.Version = o.Version
 	cfg.DataDir = o.DataDir
 	cfg.Quit = o.Quit
+	cfg.CloudflareAPI = os.Getenv("LPS_CLOUDFLARE_API") // tests point this at a fake
 	if !o.NoUpdateCheck {
 		cfg.UpdateRepo = update.DefaultRepo
 	}
