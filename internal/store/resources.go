@@ -103,12 +103,14 @@ type App struct {
 	StartCmd    string `json:"startCmd"`   // keeps running; LPS restarts it (VPS apps)
 	WantRunning bool   `json:"wantRunning"`
 	// Git source (SourceKind == SourceGit).
-	GitURL     string    `json:"gitUrl"`
-	GitBranch  string    `json:"gitBranch"`
-	GitToken   string    `json:"-"`
-	AutoDeploy bool      `json:"autoDeploy"`
-	LastCommit string    `json:"lastCommit"`
-	CreatedAt  time.Time `json:"createdAt"`
+	GitURL     string `json:"gitUrl"`
+	GitBranch  string `json:"gitBranch"`
+	GitToken   string `json:"-"`
+	AutoDeploy bool   `json:"autoDeploy"`
+	LastCommit string `json:"lastCommit"`
+	// QuickLink: a public Cloudflare quick link (trycloudflare.com) is on.
+	QuickLink bool      `json:"quickLink"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // App code sources.
@@ -123,13 +125,13 @@ func (a *App) InVPS() bool { return a.VPSID > 0 }
 
 const appCols = `id, name, source_path, container_port, host_port, cpus, memory_mb, container_id, public_port, dockerfile,
 	vps_id, source_kind, vps_path, packages, install_cmd, start_cmd, want_running,
-	git_url, git_branch, git_token, auto_deploy, last_commit, created_at`
+	git_url, git_branch, git_token, auto_deploy, last_commit, quick_link, created_at`
 
 func scanApp(r scanner) (*App, error) {
 	a := &App{}
 	err := r.Scan(&a.ID, &a.Name, &a.SourcePath, &a.ContainerPort, &a.HostPort, &a.CPUs, &a.MemoryMB, &a.ContainerID, &a.PublicPort, &a.Dockerfile,
 		&a.VPSID, &a.SourceKind, &a.VPSPath, &a.Packages, &a.InstallCmd, &a.StartCmd, &a.WantRunning,
-		&a.GitURL, &a.GitBranch, &a.GitToken, &a.AutoDeploy, &a.LastCommit, &a.CreatedAt)
+		&a.GitURL, &a.GitBranch, &a.GitToken, &a.AutoDeploy, &a.LastCommit, &a.QuickLink, &a.CreatedAt)
 	return a, err
 }
 

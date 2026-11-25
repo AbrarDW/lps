@@ -75,3 +75,9 @@ func (s *Store) SetAppPublicPort(ctx context.Context, id int64, port int) error 
 	_, err := s.db.ExecContext(ctx, `UPDATE apps SET public_port = ? WHERE id = ?`, port, id)
 	return err
 }
+
+// SetAppQuickLink turns an app's Cloudflare quick link on or off.
+func (s *Store) SetAppQuickLink(ctx context.Context, id int64, on bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE apps SET quick_link = ? WHERE id = ?`, on, id)
+	return err
+}

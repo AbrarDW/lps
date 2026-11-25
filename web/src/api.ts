@@ -1,11 +1,25 @@
 // Typed client for the lpsd REST API.
 
-export type State = "running" | "stopped" | "missing" | "provisioning" | "restoring" | "error";
+export type State =
+  | "running"
+  | "stopped"
+  | "missing"
+  | "provisioning"
+  | "restoring"
+  | "error";
 
-export interface User { id: number; username: string; createdAt: string; twoFactor?: boolean }
+export interface User {
+  id: number;
+  username: string;
+  createdAt: string;
+  twoFactor?: boolean;
+}
 
 /** Password accepted, but a two-factor code is needed to finish signing in. */
-export interface TwoFactorChallenge { twoFactorRequired: true; ticket: string }
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  ticket: string;
+}
 
 export interface VPS {
   id: number;
@@ -36,7 +50,13 @@ export interface Deployment {
   commitMessage?: string;
 }
 
-export interface GitCommit { hash: string; message: string; author: string; when: string; branch: string }
+export interface GitCommit {
+  hash: string;
+  message: string;
+  author: string;
+  when: string;
+  branch: string;
+}
 
 export interface AppItem {
   id: number;
@@ -55,6 +75,13 @@ export interface AppItem {
   publicPort: number;
   remoteUrl?: string;
   publicUrl?: string;
+  /** Cloudflare quick link (public https://<random>.trycloudflare.com). */
+  quickLink: boolean;
+  quickState?: "starting" | "active" | "error";
+  quickUrl?: string;
+  quickError?: string;
+  /** Address on the user's own domain (served through their Cloudflare Tunnel). */
+  domain?: string;
   dockerfile: string;
   dockerfileSource: "lps" | "project" | "none";
   /** 0 = the app runs in its own container. */
@@ -110,15 +137,33 @@ export interface AppDockerfile {
 }
 
 /** An app's environment variable. Secret values are never sent to the browser. */
-export interface EnvVarView { name: string; value?: string; secret: boolean; hasValue: boolean }
+export interface EnvVarView {
+  name: string;
+  value?: string;
+  secret: boolean;
+  hasValue: boolean;
+}
 /** keep: for a secret, keep the stored value (send value ""). */
-export interface EnvVarInput { name: string; value: string; secret: boolean; keep?: boolean }
+export interface EnvVarInput {
+  name: string;
+  value: string;
+  secret: boolean;
+  keep?: boolean;
+}
 
 export interface UpdateInfo {
   current: string;
   comparable: boolean;
   enabled: boolean;
-  latest?: { version: string; tag: string; name: string; notes: string; url: string; published: string; installer?: { name: string; size: number } };
+  latest?: {
+    version: string;
+    tag: string;
+    name: string;
+    notes: string;
+    url: string;
+    published: string;
+    installer?: { name: string; size: number };
+  };
   available: boolean;
   checkedAt?: string;
   error?: string;
@@ -153,10 +198,20 @@ export interface ActivityEvent {
 
 export type ActivitySubject = "" | "vps" | "app" | "remote" | "auth";
 
-export interface StatPoint { t: number; cpu: number; mem: number }
+export interface StatPoint {
+  t: number;
+  cpu: number;
+  mem: number;
+}
 
 /** Live usage of one VPS or app. cpu is % of one core; cpuLimit is in cores. */
-export interface UsageStat { cpu: number; cpuLimit: number; mem: number; memLimit: number; points: StatPoint[] }
+export interface UsageStat {
+  cpu: number;
+  cpuLimit: number;
+  mem: number;
+  memLimit: number;
+  points: StatPoint[];
+}
 
 export interface Stats {
   host: { cpus: number; memBytes: number };
@@ -165,7 +220,10 @@ export interface Stats {
   apps: Record<string, UsageStat>;
 }
 
-export interface NeedsAction { message: string; url?: string }
+export interface NeedsAction {
+  message: string;
+  url?: string;
+}
 
 export interface TunnelStatus {
   installed: boolean;
@@ -188,6 +246,26 @@ export interface ExposureView {
   url: string;
   state: "active" | "pending" | "error";
   error?: string;
+}
+
+export interface CloudflareView {
+  connected: boolean;
+  accountName?: string;
+  tunnelName?: string;
+  tunnelId?: string;
+  zones: { id: string; name: string }[];
+  zonesError?: string;
+  connector?: {
+    state: "connected" | "connecting" | "error" | "missing";
+    error?: string;
+  };
+  error?: string;
+  domains: { appId: number; appName: string; hostname: string; url: string }[];
+}
+
+export interface CloudflareAccount {
+  id: string;
+  name: string;
 }
 
 export interface RemoteView {
@@ -216,20 +294,42 @@ export interface SetupCheck {
   status: "ok" | "warn" | "fail";
   detail?: string;
   required: boolean;
-  fixes?: { kind: "link" | "command" | "action"; label: string; value: string }[];
+  fixes?: {
+    kind: "link" | "command" | "action";
+    label: string;
+    value: string;
+  }[];
 }
 
-export interface SetupChecks { os: string; ready: boolean; checks: SetupCheck[] }
+export interface SetupChecks {
+  os: string;
+  ready: boolean;
+  checks: SetupCheck[];
+}
 
-export interface AutostartState { supported: boolean; enabled: boolean; error?: string }
+export interface AutostartState {
+  supported: boolean;
+  enabled: boolean;
+  error?: string;
+}
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public needsAction?: NeedsAction) {
+  constructor(
+    public status: number,
+    message: string,
+    public needsAction?: NeedsAction,
+    /** The full error body, for errors that carry extra data. */
+    public data?: Record<string, unknown>,
+  ) {
     super(message);
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     credentials: "same-origin",
@@ -241,20 +341,47 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText, data.needsAction);
+  if (!res.ok)
+    throw new ApiError(
+      res.status,
+      data.error ?? res.statusText,
+      data.needsAction,
+      data,
+    );
   return data as T;
 }
 
 export const api = {
   setupStatus: () => request<{ needsSetup: boolean }>("GET", "/setup"),
-  setup: (username: string, password: string) => request<User>("POST", "/setup", { username, password }),
-  login: (username: string, password: string) => request<User | TwoFactorChallenge>("POST", "/auth/login", { username, password }),
-  login2fa: (ticket: string, code: string) => request<User>("POST", "/auth/login/2fa", { ticket, code }),
-  twoFactor: () => request<{ enabled: boolean; recoveryCodesLeft: number }>("GET", "/auth/2fa"),
-  setup2fa: (password: string) => request<{ secret: string; uri: string; qr: string }>("POST", "/auth/2fa/setup", { password }),
-  enable2fa: (code: string) => request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/enable", { code }),
-  disable2fa: (password: string, code: string) => request<void>("POST", "/auth/2fa/disable", { password, code }),
-  newRecoveryCodes: (password: string, code: string) => request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/recovery-codes", { password, code }),
+  setup: (username: string, password: string) =>
+    request<User>("POST", "/setup", { username, password }),
+  login: (username: string, password: string) =>
+    request<User | TwoFactorChallenge>("POST", "/auth/login", {
+      username,
+      password,
+    }),
+  login2fa: (ticket: string, code: string) =>
+    request<User>("POST", "/auth/login/2fa", { ticket, code }),
+  twoFactor: () =>
+    request<{ enabled: boolean; recoveryCodesLeft: number }>(
+      "GET",
+      "/auth/2fa",
+    ),
+  setup2fa: (password: string) =>
+    request<{ secret: string; uri: string; qr: string }>(
+      "POST",
+      "/auth/2fa/setup",
+      { password },
+    ),
+  enable2fa: (code: string) =>
+    request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/enable", { code }),
+  disable2fa: (password: string, code: string) =>
+    request<void>("POST", "/auth/2fa/disable", { password, code }),
+  newRecoveryCodes: (password: string, code: string) =>
+    request<{ recoveryCodes: string[] }>("POST", "/auth/2fa/recovery-codes", {
+      password,
+      code,
+    }),
   logout: () => request<void>("POST", "/auth/logout"),
   me: () => request<User>("GET", "/auth/me"),
   system: () => request<SystemInfo>("GET", "/system"),
@@ -262,16 +389,28 @@ export const api = {
   listVPS: () => request<VPS[]>("GET", "/vps"),
   getVPS: (id: number) => request<VPS>("GET", `/vps/${id}`),
   createVPS: (v: {
-    name: string; sshUser: string; sshPublicKey: string; password: string; cpus: number; memoryMb: number;
+    name: string;
+    sshUser: string;
+    sshPublicKey: string;
+    password: string;
+    cpus: number;
+    memoryMb: number;
   }) => request<VPS>("POST", "/vps", v),
-  vpsAction: (id: number, action: "start" | "stop") => request<VPS>("POST", `/vps/${id}/${action}`),
-  deleteVPS: (id: number, keepData: boolean) => request<void>("DELETE", `/vps/${id}${keepData ? "?keepData=true" : ""}`),
+  vpsAction: (id: number, action: "start" | "stop") =>
+    request<VPS>("POST", `/vps/${id}/${action}`),
+  deleteVPS: (id: number, keepData: boolean) =>
+    request<void>("DELETE", `/vps/${id}${keepData ? "?keepData=true" : ""}`),
   snapshots: (id: number) => request<Snapshot[]>("GET", `/vps/${id}/snapshots`),
-  takeSnapshot: (id: number, label: string) => request<Snapshot>("POST", `/vps/${id}/snapshots`, { label }),
-  restoreSnapshot: (id: number, sid: number) => request<VPS>("POST", `/vps/${id}/snapshots/${sid}/restore`),
-  cloneSnapshot: (id: number, sid: number, name: string) => request<VPS>("POST", `/vps/${id}/snapshots/${sid}/clone`, { name }),
-  deleteSnapshot: (id: number, sid: number) => request<void>("DELETE", `/vps/${id}/snapshots/${sid}`),
-  vpsLogs: (id: number) => request<{ logs: string }>("GET", `/vps/${id}/logs?tail=300`),
+  takeSnapshot: (id: number, label: string) =>
+    request<Snapshot>("POST", `/vps/${id}/snapshots`, { label }),
+  restoreSnapshot: (id: number, sid: number) =>
+    request<VPS>("POST", `/vps/${id}/snapshots/${sid}/restore`),
+  cloneSnapshot: (id: number, sid: number, name: string) =>
+    request<VPS>("POST", `/vps/${id}/snapshots/${sid}/clone`, { name }),
+  deleteSnapshot: (id: number, sid: number) =>
+    request<void>("DELETE", `/vps/${id}/snapshots/${sid}`),
+  vpsLogs: (id: number) =>
+    request<{ logs: string }>("GET", `/vps/${id}/logs?tail=300`),
 
   listApps: () => request<AppItem[]>("GET", "/apps"),
   getApp: (id: number) => request<AppItem>("GET", `/apps/${id}`),
@@ -295,33 +434,67 @@ export const api = {
     startCmd?: string;
   }) => request<AppItem>("POST", "/apps", a),
   appEnv: (id: number) => request<EnvVarView[]>("GET", `/apps/${id}/env`),
-  setAppEnv: (id: number, vars: EnvVarInput[]) => request<EnvVarView[]>("PUT", `/apps/${id}/env`, { vars }),
+  setAppEnv: (id: number, vars: EnvVarInput[]) =>
+    request<EnvVarView[]>("PUT", `/apps/${id}/env`, { vars }),
   detectGit: (url: string, branch: string, token: string) =>
-    request<DetectResult & { commit: GitCommit }>("POST", "/apps/detect-git", { url, branch, token }),
-  setAppGit: (id: number, g: { branch: string; token?: string; clearToken?: boolean; autoDeploy: boolean }) => request<AppItem>("PUT", `/apps/${id}/git`, g),
+    request<DetectResult & { commit: GitCommit }>("POST", "/apps/detect-git", {
+      url,
+      branch,
+      token,
+    }),
+  setAppGit: (
+    id: number,
+    g: {
+      branch: string;
+      token?: string;
+      clearToken?: boolean;
+      autoDeploy: boolean;
+    },
+  ) => request<AppItem>("PUT", `/apps/${id}/git`, g),
   appTemplates: () => request<Detection[]>("GET", "/apps/templates"),
-  setAppRunConfig: (id: number, c: { packages: string; installCmd: string; startCmd: string }) =>
-    request<AppItem>("PUT", `/apps/${id}/run-config`, c),
-  detectApp: (sourcePath: string) => request<DetectResult>("POST", "/apps/detect", { sourcePath }),
-  appDockerfile: (id: number) => request<AppDockerfile>("GET", `/apps/${id}/dockerfile`),
-  setAppDockerfile: (id: number, dockerfile: string) => request<AppItem>("PUT", `/apps/${id}/dockerfile`, { dockerfile }),
+  setAppRunConfig: (
+    id: number,
+    c: { packages: string; installCmd: string; startCmd: string },
+  ) => request<AppItem>("PUT", `/apps/${id}/run-config`, c),
+  detectApp: (sourcePath: string) =>
+    request<DetectResult>("POST", "/apps/detect", { sourcePath }),
+  appDockerfile: (id: number) =>
+    request<AppDockerfile>("GET", `/apps/${id}/dockerfile`),
+  setAppDockerfile: (id: number, dockerfile: string) =>
+    request<AppItem>("PUT", `/apps/${id}/dockerfile`, { dockerfile }),
   deployApp: (id: number) => request<Deployment>("POST", `/apps/${id}/deploy`),
-  appAction: (id: number, action: "start" | "stop") => request<AppItem>("POST", `/apps/${id}/${action}`),
+  appAction: (id: number, action: "start" | "stop") =>
+    request<AppItem>("POST", `/apps/${id}/${action}`),
   deleteApp: (id: number) => request<void>("DELETE", `/apps/${id}`),
-  appLogs: (id: number) => request<{ logs: string }>("GET", `/apps/${id}/logs?tail=300`),
-  deployments: (id: number) => request<Deployment[]>("GET", `/apps/${id}/deployments`),
-  setAppPublic: (id: number, isPublic: boolean) => request<AppItem>("PUT", `/apps/${id}/public`, { public: isPublic }),
+  appLogs: (id: number) =>
+    request<{ logs: string }>("GET", `/apps/${id}/logs?tail=300`),
+  deployments: (id: number) =>
+    request<Deployment[]>("GET", `/apps/${id}/deployments`),
+  setAppPublic: (id: number, isPublic: boolean) =>
+    request<AppItem>("PUT", `/apps/${id}/public`, { public: isPublic }),
+  setQuickLink: (id: number, enabled: boolean) =>
+    request<AppItem>("PUT", `/apps/${id}/quick-link`, { enabled }),
 
   setupChecks: () => request<SetupChecks>("GET", "/setup/checks"),
-  setupAction: (action: string) => request<{ status: string }>("POST", `/setup/actions/${action}`),
+  setupAction: (action: string) =>
+    request<{ status: string }>("POST", `/setup/actions/${action}`),
   update: () => request<UpdateInfo>("GET", "/system/update"),
   checkUpdate: () => request<UpdateInfo>("POST", "/system/update/check"),
-  setUpdateCheck: (enabled: boolean) => request<UpdateInfo>("PUT", "/system/update", { enabled }),
+  setUpdateCheck: (enabled: boolean) =>
+    request<UpdateInfo>("PUT", "/system/update", { enabled }),
   installUpdate: () => request<UpdateInfo>("POST", "/system/update/install"),
   autostart: () => request<AutostartState>("GET", "/system/autostart"),
-  setAutostart: (enabled: boolean) => request<AutostartState>("PUT", "/system/autostart", { enabled }),
+  setAutostart: (enabled: boolean) =>
+    request<AutostartState>("PUT", "/system/autostart", { enabled }),
 
-  events: (q: { subject?: ActivitySubject; id?: number; before?: number; limit?: number } = {}) => {
+  events: (
+    q: {
+      subject?: ActivitySubject;
+      id?: number;
+      before?: number;
+      limit?: number;
+    } = {},
+  ) => {
     const p = new URLSearchParams();
     if (q.subject) p.set("subject", q.subject);
     if (q.id) p.set("id", String(q.id));
@@ -332,7 +505,20 @@ export const api = {
   stats: () => request<Stats>("GET", "/stats"),
 
   remote: () => request<RemoteView>("GET", "/remote"),
-  setRemote: (enabled: boolean) => request<RemoteView>("PUT", "/remote", { enabled }),
+  cloudflare: () => request<CloudflareView>("GET", "/cloudflare"),
+  connectCloudflare: (token: string, accountId?: string) =>
+    request<CloudflareView>("POST", "/cloudflare", { token, accountId }),
+  disconnectCloudflare: () =>
+    request<{ view: CloudflareView; warning?: string }>(
+      "DELETE",
+      "/cloudflare",
+    ),
+  setAppDomain: (id: number, hostname: string) =>
+    request<AppItem>("PUT", `/apps/${id}/domain`, { hostname }),
+  removeAppDomain: (id: number) =>
+    request<AppItem>("DELETE", `/apps/${id}/domain`),
+  setRemote: (enabled: boolean) =>
+    request<RemoteView>("PUT", "/remote", { enabled }),
   syncRemote: () => request<RemoteView>("POST", "/remote/sync"),
 };
 

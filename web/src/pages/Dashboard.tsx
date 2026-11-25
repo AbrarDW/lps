@@ -3,17 +3,44 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, type AppItem, type VPS } from "../api";
 import { ActivityList } from "../components/Activity";
-import { Button, Callout, Card, ErrorBox, Icon, Input, PageHeader, StateBadge, Switch, Tag, TitleBlock, buttonClass, formatLimits } from "../components/ui";
+import {
+  Button,
+  Callout,
+  Card,
+  ErrorBox,
+  Icon,
+  Input,
+  PageHeader,
+  StateBadge,
+  Switch,
+  Tag,
+  TitleBlock,
+  buttonClass,
+  formatLimits,
+} from "../components/ui";
 import { UsageInline, formatBytes, useStats } from "../components/Usage";
 
-const th = "border-b border-line px-4 py-2.5 text-left font-mono text-[11px] font-medium tracking-[0.08em] text-ink-faint uppercase";
+const th =
+  "border-b border-line px-4 py-2.5 text-left font-mono text-[11px] font-medium tracking-[0.08em] text-ink-faint uppercase";
 const td = "border-b border-line-soft px-4 py-3 align-middle";
 
 /** Table of VPS (dashboard and /vps). */
-export function VPSTable({ title = "Linux VPS", action }: { title?: string; action?: React.ReactNode }) {
-  const vps = useQuery({ queryKey: ["vps"], queryFn: api.listVPS, refetchInterval: 5000 });
+export function VPSTable({
+  title = "Linux VPS",
+  action,
+}: {
+  title?: string;
+  action?: React.ReactNode;
+}) {
+  const vps = useQuery({
+    queryKey: ["vps"],
+    queryFn: api.listVPS,
+    refetchInterval: 5000,
+  });
   const [filter, setFilter] = useState("");
-  const list = (vps.data ?? []).filter((v) => v.name.includes(filter.trim().toLowerCase()));
+  const list = (vps.data ?? []).filter((v) =>
+    v.name.includes(filter.trim().toLowerCase()),
+  );
   return (
     <Card
       title={title}
@@ -26,7 +53,13 @@ export function VPSTable({ title = "Linux VPS", action }: { title?: string; acti
             <span className="pointer-events-none absolute left-2.5 text-ink-faint">
               <Icon name="search" />
             </span>
-            <Input type="search" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} className="!h-[30px] w-44 pl-8 text-[13px]" />
+            <Input
+              type="search"
+              placeholder="Filter…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="!h-[30px] w-44 pl-8 text-[13px]"
+            />
           </label>
           {action}
         </>
@@ -35,7 +68,8 @@ export function VPSTable({ title = "Linux VPS", action }: { title?: string; acti
       <ErrorBox error={vps.error} />
       {vps.data?.length === 0 ? (
         <p className="m-0 p-4 text-ink-muted">
-          No VPS yet. A VPS is an Ubuntu 24.04 machine you can SSH into, running in an isolated container on this PC.{" "}
+          No VPS yet. A VPS is an Ubuntu 24.04 machine you can SSH into, running
+          in an isolated container on this PC.{" "}
           <Link to="/vps/new">Create one</Link>.
         </p>
       ) : (
@@ -69,22 +103,42 @@ export function VPSTable({ title = "Linux VPS", action }: { title?: string; acti
 function VPSRow({ v, striped }: { v: VPS; striped: boolean }) {
   const qc = useQueryClient();
   const usage = useStats().data?.vps[String(v.id)];
-  const start = useMutation({ mutationFn: () => api.vpsAction(v.id, "start"), onSuccess: () => qc.invalidateQueries({ queryKey: ["vps"] }) });
+  const start = useMutation({
+    mutationFn: () => api.vpsAction(v.id, "start"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vps"] }),
+  });
   return (
     <tr className={striped ? "bg-white/[0.02]" : ""}>
       <td className={td}>
-        <Link to={`/vps/${v.id}`} className="font-semibold text-ink no-underline hover:text-cyan-soft">
+        <Link
+          to={`/vps/${v.id}`}
+          className="font-semibold text-ink no-underline hover:text-cyan-soft"
+        >
           {v.name}
         </Link>
-        <div className="text-xs text-ink-muted">Ubuntu 24.04 · user {v.sshUser}</div>
+        <div className="text-xs text-ink-muted">
+          Ubuntu 24.04 · user {v.sshUser}
+        </div>
       </td>
       <td className={td}>
         <StateBadge state={v.state} />
       </td>
       <td className={`${td} font-mono text-xs`}>:{v.sshPort}</td>
-      <td className={`${td} text-[13px] text-ink-2`}>{formatLimits(v.cpus, v.memoryMb)}</td>
-      <td className={td}>{v.state === "running" ? <UsageInline u={usage} /> : <span className="text-ink-faint">—</span>}</td>
-      <td className={`${td} text-[13px] ${v.remoteSsh ? "text-cyan-soft" : "text-ink-faint"}`}>{v.remoteSsh ? "tailnet" : "—"}</td>
+      <td className={`${td} text-[13px] text-ink-2`}>
+        {formatLimits(v.cpus, v.memoryMb)}
+      </td>
+      <td className={td}>
+        {v.state === "running" ? (
+          <UsageInline u={usage} />
+        ) : (
+          <span className="text-ink-faint">—</span>
+        )}
+      </td>
+      <td
+        className={`${td} text-[13px] ${v.remoteSsh ? "text-cyan-soft" : "text-ink-faint"}`}
+      >
+        {v.remoteSsh ? "tailnet" : "—"}
+      </td>
       <td className={`${td} text-right whitespace-nowrap`}>
         {v.state === "running" ? (
           <Link to={`/vps/${v.id}`} className={buttonClass("secondary", "sm")}>
@@ -92,7 +146,12 @@ function VPSRow({ v, striped }: { v: VPS; striped: boolean }) {
             Terminal
           </Link>
         ) : v.state === "stopped" ? (
-          <Button variant="secondary" size="sm" disabled={start.isPending} onClick={() => start.mutate()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={start.isPending}
+            onClick={() => start.mutate()}
+          >
             <Icon name="play" size={13} />
             Start
           </Button>
@@ -103,17 +162,29 @@ function VPSRow({ v, striped }: { v: VPS; striped: boolean }) {
 }
 
 /** List of apps (dashboard and /apps). */
-export function AppList({ title = "Apps", action, limit }: { title?: string; action?: React.ReactNode; limit?: number }) {
-  const apps = useQuery({ queryKey: ["apps"], queryFn: api.listApps, refetchInterval: 5000 });
+export function AppList({
+  title = "Apps",
+  action,
+  limit,
+}: {
+  title?: string;
+  action?: React.ReactNode;
+  limit?: number;
+}) {
+  const apps = useQuery({
+    queryKey: ["apps"],
+    queryFn: api.listApps,
+    refetchInterval: 5000,
+  });
   const list = limit ? (apps.data ?? []).slice(0, limit) : (apps.data ?? []);
   return (
     <Card title={title} flush actions={action}>
       <ErrorBox error={apps.error} />
       {apps.data?.length === 0 && (
         <p className="m-0 p-4 text-ink-muted">
-          No apps yet. Point LPS at a project folder and it runs it for you: in its own container (it writes a Dockerfile if there isn't one) or
-          inside one of your VPS.{" "}
-          <Link to="/apps/new">Add an app</Link>.
+          No apps yet. Point LPS at a project folder and it runs it for you: in
+          its own container (it writes a Dockerfile if there isn't one) or
+          inside one of your VPS. <Link to="/apps/new">Add an app</Link>.
         </p>
       )}
       <ul className="m-0 list-none p-0">
@@ -128,23 +199,48 @@ export function AppList({ title = "Apps", action, limit }: { title?: string; act
 function AppRow({ a, last }: { a: AppItem; last: boolean }) {
   const usage = useStats().data?.apps[String(a.id)];
   return (
-    <li className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 ${last ? "" : "border-b border-line-soft"}`}>
+    <li
+      className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 ${last ? "" : "border-b border-line-soft"}`}
+    >
       <div className="min-w-0 flex-[1_1_220px]">
-        <Link to={`/apps/${a.id}`} className="font-semibold text-ink no-underline hover:text-cyan-soft">
+        <Link
+          to={`/apps/${a.id}`}
+          className="font-semibold text-ink no-underline hover:text-cyan-soft"
+        >
           {a.name}
         </Link>
-        <div className="truncate font-mono text-xs text-ink-muted">{a.sourceKind === "vps" ? `${a.vpsName}:${a.vpsPath}` : a.sourcePath}</div>
+        <div className="truncate font-mono text-xs text-ink-muted">
+          {a.sourceKind === "vps" ? `${a.vpsName}:${a.vpsPath}` : a.sourcePath}
+        </div>
       </div>
       {a.vpsId > 0 && <Tag intent="primary">VPS {a.vpsName}</Tag>}
-      {a.publicUrl && <Tag intent="warning">Public</Tag>}
-      {a.deploying ? <Tag intent="primary" dot>Building</Tag> : a.lastDeploy?.status === "failed" && a.state !== "running" ? <Tag intent="danger" dot>Build failed</Tag> : <StateBadge state={a.state} />}
+      {(a.publicUrl || a.quickUrl) && <Tag intent="warning">Public</Tag>}
+      {a.deploying ? (
+        <Tag intent="primary" dot>
+          Building
+        </Tag>
+      ) : a.lastDeploy?.status === "failed" && a.state !== "running" ? (
+        <Tag intent="danger" dot>
+          Build failed
+        </Tag>
+      ) : (
+        <StateBadge state={a.state} />
+      )}
       {a.state === "running" && <UsageInline u={usage} />}
       <span className="font-mono text-xs text-ink-2">:{a.hostPort}</span>
     </li>
   );
 }
 
-function Stat({ label, children, foot }: { label: string; children: React.ReactNode; foot?: React.ReactNode }) {
+function Stat({
+  label,
+  children,
+  foot,
+}: {
+  label: string;
+  children: React.ReactNode;
+  foot?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1 rounded-bp border border-line bg-panel px-4 py-3.5">
       <span className="label-mono text-ink-faint">{label}</span>
@@ -155,24 +251,49 @@ function Stat({ label, children, foot }: { label: string; children: React.ReactN
 }
 
 export function Dashboard() {
-  const system = useQuery({ queryKey: ["system"], queryFn: api.system, refetchInterval: 15000 });
-  const vps = useQuery({ queryKey: ["vps"], queryFn: api.listVPS, refetchInterval: 5000 });
-  const apps = useQuery({ queryKey: ["apps"], queryFn: api.listApps, refetchInterval: 5000 });
-  const remote = useQuery({ queryKey: ["remote"], queryFn: api.remote, refetchInterval: 15000 });
+  const system = useQuery({
+    queryKey: ["system"],
+    queryFn: api.system,
+    refetchInterval: 15000,
+  });
+  const vps = useQuery({
+    queryKey: ["vps"],
+    queryFn: api.listVPS,
+    refetchInterval: 5000,
+  });
+  const apps = useQuery({
+    queryKey: ["apps"],
+    queryFn: api.listApps,
+    refetchInterval: 5000,
+  });
+  const remote = useQuery({
+    queryKey: ["remote"],
+    queryFn: api.remote,
+    refetchInterval: 15000,
+  });
   const docker = system.data?.docker;
 
   const vpsRunning = vps.data?.filter((v) => v.state === "running").length ?? 0;
-  const appsRunning = apps.data?.filter((a) => a.state === "running").length ?? 0;
-  const appsPublic = apps.data?.filter((a) => a.publicUrl).length ?? 0;
+  const appsRunning =
+    apps.data?.filter((a) => a.state === "running").length ?? 0;
+  const appsPublic =
+    apps.data?.filter((a) => a.publicUrl || a.quickUrl).length ?? 0;
   const r = remote.data;
   // Totals over containers LPS runs. Apps inside a VPS are already part of their VPS.
   const stats = useStats().data;
-  const ownContainerApps = new Set(apps.data?.filter((a) => a.vpsId === 0).map((a) => String(a.id)));
+  const ownContainerApps = new Set(
+    apps.data?.filter((a) => a.vpsId === 0).map((a) => String(a.id)),
+  );
   const totals = stats
-    ? [...Object.values(stats.vps), ...Object.entries(stats.apps).filter(([id]) => ownContainerApps.has(id)).map(([, u]) => u)].reduce(
-        (t, u) => ({ cpu: t.cpu + u.cpu, mem: t.mem + u.mem }),
-        { cpu: 0, mem: 0 },
-      )
+    ? [
+        ...Object.values(stats.vps),
+        ...Object.entries(stats.apps)
+          .filter(([id]) => ownContainerApps.has(id))
+          .map(([, u]) => u),
+      ].reduce((t, u) => ({ cpu: t.cpu + u.cpu, mem: t.mem + u.mem }), {
+        cpu: 0,
+        mem: 0,
+      })
     : null;
 
   return (
@@ -197,20 +318,51 @@ export function Dashboard() {
       {docker && !docker.ok && (
         <Callout intent="warning">
           <b>Docker is not reachable.</b> {docker.hint}
-          <div className="mt-1 font-mono text-xs opacity-75">{docker.error}</div>
+          <div className="mt-1 font-mono text-xs opacity-75">
+            {docker.error}
+          </div>
         </Callout>
       )}
 
-      <section aria-label="Summary" className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-3">
-        <Stat label="VPS" foot={vps.data?.length ? `SSH ports ${vps.data.map((v) => v.sshPort).join(", ")}` : "None yet"}>
-          {vpsRunning} <span className="text-sm font-normal text-ink-muted">running of {vps.data?.length ?? 0}</span>
+      <section
+        aria-label="Summary"
+        className="grid grid-cols-[repeat(auto-fit,minmax(230px,1fr))] gap-3"
+      >
+        <Stat
+          label="VPS"
+          foot={
+            vps.data?.length
+              ? `SSH ports ${vps.data.map((v) => v.sshPort).join(", ")}`
+              : "None yet"
+          }
+        >
+          {vpsRunning}{" "}
+          <span className="text-sm font-normal text-ink-muted">
+            running of {vps.data?.length ?? 0}
+          </span>
         </Stat>
-        <Stat label="Apps" foot={appsPublic ? `${appsPublic} with a public link` : "Private to this PC and your devices"}>
-          {appsRunning} <span className="text-sm font-normal text-ink-muted">running of {apps.data?.length ?? 0}</span>
+        <Stat
+          label="Apps"
+          foot={
+            appsPublic
+              ? `${appsPublic} with a public link`
+              : "Private to this PC and your devices"
+          }
+        >
+          {appsRunning}{" "}
+          <span className="text-sm font-normal text-ink-muted">
+            running of {apps.data?.length ?? 0}
+          </span>
         </Stat>
         <div className="flex flex-col gap-1 rounded-bp border border-line bg-panel px-4 py-3.5">
           <span className="label-mono text-ink-faint">Remote access</span>
-          <span className="pt-1.5 text-base font-semibold">{r?.available ? (r.enabled ? "On · Tailscale" : "Off") : "Unavailable"}</span>
+          <span className="pt-1.5 text-base font-semibold">
+            {r?.available
+              ? r.enabled
+                ? "On · Tailscale"
+                : "Off"
+              : "Unavailable"}
+          </span>
           {r?.dashboardUrl ? (
             <a href={r.dashboardUrl} className="font-mono text-xs break-all">
               {r.dashboardUrl.replace("https://", "")}
@@ -223,19 +375,41 @@ export function Dashboard() {
         </div>
         <Stat
           label="Usage now"
-          foot={stats?.host.cpus ? `of ${stats.host.cpus} CPUs · ${formatBytes(stats.host.memBytes)} available to Docker` : "VPS and apps together"}
+          foot={
+            stats?.host.cpus
+              ? `of ${stats.host.cpus} CPUs · ${formatBytes(stats.host.memBytes)} available to Docker`
+              : "VPS and apps together"
+          }
         >
           {totals ? (
             <>
-              {Math.round(stats?.host.cpus ? totals.cpu / stats.host.cpus : totals.cpu)}%{" "}
-              <span className="text-sm font-normal text-ink-muted">CPU · {formatBytes(totals.mem)}</span>
+              {Math.round(
+                stats?.host.cpus ? totals.cpu / stats.host.cpus : totals.cpu,
+              )}
+              %{" "}
+              <span className="text-sm font-normal text-ink-muted">
+                CPU · {formatBytes(totals.mem)}
+              </span>
             </>
           ) : (
             "…"
           )}
         </Stat>
-        <Stat label="Docker" foot={docker?.ok ? `${system.data?.os}/${system.data?.arch}` : docker?.hint}>
-          <span className="text-base">{docker ? (docker.ok ? `Running · ${docker.version}` : "Not reachable") : "…"}</span>
+        <Stat
+          label="Docker"
+          foot={
+            docker?.ok
+              ? `${system.data?.os}/${system.data?.arch}`
+              : docker?.hint
+          }
+        >
+          <span className="text-base">
+            {docker
+              ? docker.ok
+                ? `Running · ${docker.version}`
+                : "Not reachable"
+              : "…"}
+          </span>
         </Stat>
       </section>
 
@@ -268,7 +442,13 @@ export function Dashboard() {
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <AutostartToggle />
-        <TitleBlock cells={[`LPS ${system.data?.version ?? ""}`, `${system.data?.os ?? ""}/${system.data?.arch ?? ""}`.toUpperCase(), "Sheet 01"]} />
+        <TitleBlock
+          cells={[
+            `LPS ${system.data?.version ?? ""}`,
+            `${system.data?.os ?? ""}/${system.data?.arch ?? ""}`.toUpperCase(),
+            "Sheet 01",
+          ]}
+        />
       </div>
     </>
   );
@@ -315,11 +495,19 @@ export function AppListPage() {
 function AutostartToggle() {
   const qc = useQueryClient();
   const auto = useQuery({ queryKey: ["autostart"], queryFn: api.autostart });
-  const set = useMutation({ mutationFn: api.setAutostart, onSuccess: (v) => qc.setQueryData(["autostart"], v) });
+  const set = useMutation({
+    mutationFn: api.setAutostart,
+    onSuccess: (v) => qc.setQueryData(["autostart"], v),
+  });
   if (!auto.data?.supported) return <span />;
   return (
     <div className="flex items-center gap-2 text-[13px] text-ink-muted">
-      <Switch label="Start with Windows" checked={auto.data.enabled} disabled={set.isPending} onChange={(v) => set.mutate(v)} />
+      <Switch
+        label="Start with Windows"
+        checked={auto.data.enabled}
+        disabled={set.isPending}
+        onChange={(v) => set.mutate(v)}
+      />
       Start LPS when I sign in to Windows
     </div>
   );
