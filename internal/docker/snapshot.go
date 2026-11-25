@@ -3,6 +3,8 @@ package docker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -123,5 +125,97 @@ func (c *Client) RemoveSnapshotImage(ctx context.Context, ref string) error {
 	if cerrdefs.IsNotFound(err) {
 		return nil
 	}
+	return err
+}
+
+// SaveImage implements Engine: it writes an image as a tar archive (docker save).
+func (c *Client) SaveImage(ctx context.Context, ref string, w io.Writer) error {
+	rc, err := c.cli.ImageSave(ctx, []string{ref})
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	_, err = io.Copy(w, rc)
+	return err
+}
+
+// LoadImage implements Engine: it loads images from a docker save archive.
+func (c *Client) LoadImage(ctx context.Context, r io.Reader) error {
+	res, err := c.cli.ImageLoad(ctx, r, client.ImageLoadWithQuiet(true))
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+	dec := json.NewDecoder(res)
+	for {
+		var m struct {
+			Error       string `json:"error"`
+			ErrorDetail *struct {
+				Message string `json:"message"`
+			} `json:"errorDetail"`
+		}
+		if err := dec.Decode(&m); errors.Is(err, io.EOF) {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("load image: %w", err)
+		}
+		if m.Error != "" {
+			return fmt.Errorf("load image: %s", m.Error)
+		}
+		if m.ErrorDetail != nil && m.ErrorDetail.Message != "" {
+			return fmt.Errorf("load image: %s", m.ErrorDetail.Message)
+		}
+	}
+}
+
+// volumeHelper creates (never starts) a container with vol at /data, for
+// copying files in and out. The caller removes it.
+func (c *Client) volumeHelper(ctx context.Context, vol string, readOnly bool) (string, error) {
+	res, err := c.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
+			Image:  images.UbuntuVPSTag,
+			Cmd:    []string{"true"},
+			Labels: map[string]string{"lps.managed": "true", "lps.kind": "helper"},
+		},
+		HostConfig: &container.HostConfig{
+			Mounts:      []mount.Mount{{Type: mount.TypeVolume, Source: vol, Target: "/data", ReadOnly: readOnly}},
+			NetworkMode: "none",
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return res.ID, nil
+}
+
+// ExportVolume implements Engine: it writes a volume's files (with owners
+// and permissions) as a tar archive.
+func (c *Client) ExportVolume(ctx context.Context, vol string, w io.Writer) error {
+	id, err := c.volumeHelper(ctx, vol, true)
+	if err != nil {
+		return err
+	}
+	defer c.cli.ContainerRemove(context.WithoutCancel(ctx), id, client.ContainerRemoveOptions{Force: true})
+	res, err := c.cli.CopyFromContainer(ctx, id, client.CopyFromContainerOptions{SourcePath: "/data/."})
+	if err != nil {
+		return err
+	}
+	defer res.Content.Close()
+	_, err = io.Copy(w, res.Content)
+	return err
+}
+
+// ImportVolume implements Engine: it creates vol and extracts a tar archive
+// made by ExportVolume into it, keeping owners and permissions.
+func (c *Client) ImportVolume(ctx context.Context, vol string, r io.Reader, lbls map[string]string) error {
+	if _, err := c.cli.VolumeCreate(ctx, client.VolumeCreateOptions{Name: vol, Labels: lbls}); err != nil {
+		return fmt.Errorf("create volume %s: %w", vol, err)
+	}
+	id, err := c.volumeHelper(ctx, vol, false)
+	if err != nil {
+		return err
+	}
+	defer c.cli.ContainerRemove(context.WithoutCancel(ctx), id, client.ContainerRemoveOptions{Force: true})
+	_, err = c.cli.CopyToContainer(ctx, id, client.CopyToContainerOptions{DestinationPath: "/data", Content: r, CopyUIDGID: true})
 	return err
 }

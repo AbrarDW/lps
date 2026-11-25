@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, importVPS } from "../api";
 import { Button, Card, ErrorBox, Field, Input, PageHeader, TextArea } from "../components/ui";
 
 export function NewVPS() {
@@ -82,6 +82,69 @@ export function NewVPS() {
         </div>
       </form>
     </Card>
+      <ImportCard />
     </>
+  );
+}
+
+/** Creates a VPS from a .lpsnap snapshot file (exported on this or another PC). */
+function ImportCard() {
+  const nav = useNavigate();
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState(0);
+  const m = useMutation({
+    mutationFn: () => importVPS(name.trim(), file!, setProgress),
+    onSuccess: (v) => {
+      qc.invalidateQueries({ queryKey: ["vps"] });
+      nav(`/vps/${v.id}`);
+    },
+    onSettled: () => setProgress(0),
+  });
+  const uploading = m.isPending && progress < 1;
+  return (
+    <Card title="Or create it from a snapshot file">
+      <form
+        className="flex flex-col gap-4 text-[13px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          m.mutate();
+        }}
+      >
+        <p className="m-0 text-ink-muted">
+          Use a <code>.lpsnap</code> file made with <b>Export to file</b> on a VPS's snapshot, on this PC or another one. The new VPS has the same
+          files, software, user, password and SSH keys, with its own name and SSH port.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Name for the new VPS">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="dev-box" required pattern="[a-z0-9][a-z0-9\-]{1,30}" />
+          </Field>
+          <Field label="Snapshot file">
+            <input
+              type="file"
+              accept=".lpsnap"
+              required
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="text-[13px] file:mr-3 file:h-[30px] file:cursor-pointer file:rounded-bp file:border file:border-[#2f5f92] file:bg-transparent file:px-2.5 file:text-ink"
+            />
+          </Field>
+        </div>
+        {m.isPending && (
+          <div className="flex flex-col gap-1.5">
+            <div className="h-1.5 overflow-hidden rounded-[1px] bg-line">
+              <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round(progress * 100)}%` }} />
+            </div>
+            <span className="text-xs text-ink-muted">
+              {uploading ? `Uploading… ${Math.round(progress * 100)}%` : "Loading the snapshot into Docker… This can take a few minutes for a large VPS."}
+            </span>
+          </div>
+        )}
+        <ErrorBox error={m.error} />
+        <Button type="submit" className="self-start" disabled={m.isPending || !file || !name.trim()}>
+          {m.isPending ? "Creating…" : "Create VPS from file"}
+        </Button>
+      </form>
+    </Card>
   );
 }

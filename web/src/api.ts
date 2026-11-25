@@ -180,7 +180,35 @@ export interface Snapshot {
   error?: string;
   systemBytes: number;
   homeBytes: number;
+  /** Taken by the automatic schedule (deleted to keep the newest N). */
+  auto: boolean;
   createdAt: string;
+  export: SnapshotExport;
+}
+
+export interface SnapshotExport {
+  state: "none" | "exporting" | "ready" | "failed";
+  file?: string;
+  /** Full path of the file on this PC. */
+  path?: string;
+  bytes?: number;
+  written?: number;
+  error?: string;
+}
+
+export interface SnapshotSchedule {
+  frequency: "daily" | "weekly";
+  hour: number;
+  /** 0 = Sunday */
+  weekday: number;
+  keep: number;
+  lastRun?: string;
+}
+
+export interface ScheduleView {
+  schedule: SnapshotSchedule | null;
+  next?: string;
+  timeZone: string;
 }
 
 export interface ActivityEvent {
@@ -409,6 +437,12 @@ export const api = {
     request<VPS>("POST", `/vps/${id}/snapshots/${sid}/clone`, { name }),
   deleteSnapshot: (id: number, sid: number) =>
     request<void>("DELETE", `/vps/${id}/snapshots/${sid}`),
+  exportSnapshot: (id: number, sid: number) => request<SnapshotExport>("POST", `/vps/${id}/snapshots/${sid}/export`),
+  deleteExport: (id: number, sid: number) => request<SnapshotExport>("DELETE", `/vps/${id}/snapshots/${sid}/export`),
+  exportUrl: (id: number, sid: number) => `/api/vps/${id}/snapshots/${sid}/export`,
+  snapshotSchedule: (id: number) => request<ScheduleView>("GET", `/vps/${id}/snapshot-schedule`),
+  setSnapshotSchedule: (id: number, s: { frequency: "off" | "daily" | "weekly"; hour: number; weekday: number; keep: number }) =>
+    request<ScheduleView>("PUT", `/vps/${id}/snapshot-schedule`, s),
   vpsLogs: (id: number) =>
     request<{ logs: string }>("GET", `/vps/${id}/logs?tail=300`),
 
@@ -527,4 +561,30 @@ export function displayHost(bindIp: string | undefined): string {
   if (!bindIp || bindIp === "127.0.0.1" || bindIp === "::1") return "localhost";
   if (bindIp === "0.0.0.0" || bindIp === "::") return window.location.hostname;
   return bindIp;
+}
+
+/**
+ * Creates a VPS from a .lpsnap file. Uses XMLHttpRequest for upload progress
+ * (fraction 0-1); after the upload, LPS still loads the file before answering.
+ */
+export function importVPS(name: string, file: File, onProgress: (fraction: number) => void): Promise<VPS> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/vps/import?name=${encodeURIComponent(name)}`);
+    xhr.setRequestHeader("X-LPS-Request", "1");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let data: Record<string, unknown> = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        /* not JSON */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as unknown as VPS);
+      else reject(new ApiError(xhr.status, (data.error as string) ?? xhr.statusText, undefined, data));
+    };
+    xhr.onerror = () => reject(new ApiError(0, "the upload was interrupted"));
+    xhr.send(file);
+  });
 }

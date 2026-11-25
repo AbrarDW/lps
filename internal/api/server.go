@@ -98,6 +98,7 @@ type Server struct {
 	updates   updateState
 	quick     quickState
 	cf        cfState
+	exports   map[int64]*exportJob // snapshot exports in progress or failed
 }
 
 type taskInfo struct {
@@ -152,12 +153,14 @@ func New(cfg Config, st *store.Store, eng docker.Engine, tp tunnel.Provider, ui 
 	s.gitKick = make(chan struct{}, 1)
 	s.quick.kick = make(chan struct{}, 1)
 	s.cf.kick = make(chan struct{}, 1)
-	s.wg.Add(5)
+	s.exports = map[int64]*exportJob{}
+	s.wg.Add(6)
 	go s.vpsAppsLoop()
 	go s.statsLoop()
 	go s.gitPollLoop()
 	go s.quickLoop()
 	go s.cfLoop()
+	go s.scheduleLoop()
 	return s
 }
 
@@ -217,6 +220,12 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/vps/{id}/snapshots/{sid}/restore", s.handleRestoreSnapshot)
 			r.Post("/vps/{id}/snapshots/{sid}/clone", s.handleCloneSnapshot)
 			r.Delete("/vps/{id}/snapshots/{sid}", s.handleDeleteSnapshot)
+			r.Post("/vps/{id}/snapshots/{sid}/export", s.handleExportSnapshot)
+			r.Get("/vps/{id}/snapshots/{sid}/export", s.handleDownloadExport)
+			r.Delete("/vps/{id}/snapshots/{sid}/export", s.handleDeleteExport)
+			r.Get("/vps/{id}/snapshot-schedule", s.handleGetSchedule)
+			r.Put("/vps/{id}/snapshot-schedule", s.handleSetSchedule)
+			r.Post("/vps/import", s.handleImportVPS)
 
 			r.Get("/apps", s.handleListApps)
 			r.Post("/apps", s.handleCreateApp)

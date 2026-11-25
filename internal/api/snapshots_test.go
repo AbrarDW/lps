@@ -24,7 +24,14 @@ func (f *fakeEngine) Commit(_ context.Context, id, ref, comment string) error {
 	return nil
 }
 
-func (f *fakeEngine) ImageSize(_ context.Context, ref string) (int64, error) { return 300 << 20, nil }
+func (f *fakeEngine) ImageSize(_ context.Context, ref string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.images[ref] {
+		return 0, fmt.Errorf("no such image %s", ref)
+	}
+	return 300 << 20, nil
+}
 
 func (f *fakeEngine) CopyVolume(_ context.Context, from, to string, _ map[string]string) (int64, error) {
 	f.mu.Lock()
