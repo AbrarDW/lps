@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -19,6 +20,8 @@ type fakeTunnel struct {
 	live     map[int]tunnel.Exposure
 	external map[int]bool // ports configured outside LPS
 	applies  []tunnel.Exposure
+	// targets describes external ports (as tailscale serve status would).
+	targets map[int]tunnel.ServeEntry
 }
 
 func newFakeTunnel() *fakeTunnel {
@@ -62,6 +65,18 @@ func (f *fakeTunnel) UsedPorts(context.Context) (map[int]bool, error) {
 		used[p] = true
 	}
 	return used, nil
+}
+func (f *fakeTunnel) Configured(context.Context) (map[int]tunnel.ServeEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[int]tunnel.ServeEntry{}
+	for p, e := range f.live {
+		out[p] = tunnel.ServeEntry{Exposure: e}
+	}
+	for p, e := range f.targets {
+		out[p] = e
+	}
+	return out, nil
 }
 func (f *fakeTunnel) snapshot() map[int]tunnel.Exposure {
 	f.mu.Lock()
@@ -255,4 +270,61 @@ func TestClientIPAndHTTPS(t *testing.T) {
 	if clientIP(r2) != "192.168.1.50" || isHTTPS(r2) {
 		t.Fatalf("spoofed headers trusted: ip=%s https=%v", clientIP(r2), isHTTPS(r2))
 	}
+}
+
+// A setting identical to LPS's own, left by an earlier install or data
+// folder, is taken over; one pointing elsewhere is left alone and explained.
+func TestRemoteTakesOverLeftover(t *testing.T) {
+	ft := newFakeTunnel()
+	leftover := tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: 443, LocalPort: 7070}
+	ft.external[443] = true
+	ft.targets = map[int]tunnel.ServeEntry{443: {Exposure: leftover, Target: "http://127.0.0.1:7070"}}
+	h := setupWith(t, ft)
+	h.login()
+
+	var rv remoteView
+	h.do("PUT", "/api/remote", map[string]bool{"enabled": true}, &rv)
+	for _, e := range rv.Exposures {
+		if e.Port == 443 && (e.State != "active" || e.Error != "") {
+			t.Fatalf("dashboard exposure = %+v", e)
+		}
+	}
+	if rv.DashboardURL != "https://home-pc.tail1234.ts.net" {
+		t.Fatalf("dashboard URL = %q", rv.DashboardURL)
+	}
+	ft.mu.Lock()
+	applies := len(ft.applies)
+	ft.mu.Unlock()
+	if applies != 0 {
+		t.Fatalf("re-applied %d exposures instead of taking over", applies)
+	}
+	// Taken over means LPS now owns it: turning remote access off removes it.
+	ft.mu.Lock()
+	ft.live[443] = leftover
+	delete(ft.external, 443)
+	ft.targets = nil
+	ft.mu.Unlock()
+	h.do("PUT", "/api/remote", map[string]bool{"enabled": false}, nil)
+	if _, ok := ft.snapshot()[443]; ok {
+		t.Fatal("taken-over setting not removed when remote access was turned off")
+	}
+}
+
+func TestRemoteForeignPortExplained(t *testing.T) {
+	ft := newFakeTunnel()
+	ft.external[443] = true
+	ft.targets = map[int]tunnel.ServeEntry{443: {Exposure: tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: 443, LocalPort: 3000}, Target: "http://127.0.0.1:3000"}}
+	h := setupWith(t, ft)
+	h.login()
+	var rv remoteView
+	h.do("PUT", "/api/remote", map[string]bool{"enabled": true}, &rv)
+	for _, e := range rv.Exposures {
+		if e.Port == 443 {
+			if e.State != "error" || !strings.Contains(e.Error, "points to http://127.0.0.1:3000") || !strings.Contains(e.Error, "tailscale serve --yes --https=443 off") {
+				t.Fatalf("exposure = %+v", e)
+			}
+			return
+		}
+	}
+	t.Fatal("no dashboard exposure")
 }

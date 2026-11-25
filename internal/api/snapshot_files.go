@@ -85,10 +85,15 @@ func (s *Server) exportPath(v *store.VPS, sn *store.Snapshot) string {
 }
 
 func (s *Server) exportView(v *store.VPS, sn *store.Snapshot) exportView {
+	// running and err are guarded by s.mu; written is atomic.
 	s.mu.Lock()
 	job := s.exports[sn.ID]
+	running, jobErr := false, ""
+	if job != nil {
+		running, jobErr = job.running, job.err
+	}
 	s.mu.Unlock()
-	if job != nil && job.running {
+	if running {
 		return exportView{State: "exporting", Written: job.written.Load()}
 	}
 	p := s.exportPath(v, sn)
@@ -96,8 +101,8 @@ func (s *Server) exportView(v *store.VPS, sn *store.Snapshot) exportView {
 		abs, _ := filepath.Abs(p)
 		return exportView{State: "ready", File: filepath.Base(p), Path: abs, Bytes: st.Size()}
 	}
-	if job != nil && job.err != "" {
-		return exportView{State: "failed", Error: job.err}
+	if jobErr != "" {
+		return exportView{State: "failed", Error: jobErr}
 	}
 	return exportView{State: "none"}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,6 +169,14 @@ func (s *Server) reconcile(ctx context.Context) {
 			lastErr = err.Error()
 			used = map[int]bool{}
 		}
+		configured := map[int]tunnel.ServeEntry{}
+		if c, ok := s.tunnel.(interface {
+			Configured(context.Context) (map[int]tunnel.ServeEntry, error)
+		}); ok {
+			if m, err := c.Configured(ctx); err == nil {
+				configured = m
+			}
+		}
 		ports := make([]int, 0, len(desired))
 		for p := range desired {
 			ports = append(ports, p)
@@ -183,7 +192,20 @@ func (s *Server) reconcile(ctx context.Context) {
 					continue
 				}
 			} else if used[p] {
-				portErrs[p] = fmt.Sprintf("port %d is already used by another Tailscale serve/funnel setting on this PC; LPS left it alone", p)
+				entry, known := configured[p]
+				if known && entry.Proto != "" && entry.Exposure == d.Exposure {
+					// Exactly what LPS would set up, left by an earlier LPS
+					// install or data folder: take it over.
+					if err := s.store.SaveExposure(ctx, store.AppliedExposure{
+						Proto: d.Proto, Port: d.Port, LocalPort: d.LocalPort, Public: d.Public,
+					}); err != nil {
+						portErrs[p] = err.Error()
+					} else {
+						s.log.Info("remote access: took over an existing identical Tailscale setting", "port", p)
+					}
+					continue
+				}
+				portErrs[p] = foreignPortError(p, d.Exposure, entry, known)
 				continue
 			}
 			if err := s.tunnel.Apply(ctx, d.Exposure); err != nil {
@@ -451,4 +473,19 @@ func (s *Server) pickPublicPort(ctx context.Context, allowed []int) (int, error)
 		}
 	}
 	return 0, errNoPublicPort
+}
+
+// foreignPortError explains a remote port taken by a Tailscale setting LPS
+// didn't make, and how to remove it if it isn't needed.
+func foreignPortError(port int, want tunnel.Exposure, entry tunnel.ServeEntry, known bool) string {
+	what := ""
+	if known && entry.Target != "" {
+		what = " (it points to " + entry.Target + ")"
+	}
+	off := want
+	if known && entry.Proto != "" {
+		off = entry.Exposure
+	}
+	return fmt.Sprintf("port %d is already used by another Tailscale serve/funnel setting on this PC%s; LPS left it alone. "+
+		"If you don't need it, remove it with: tailscale %s", port, what, strings.Join(tunnel.RemoveArgs(off), " "))
 }
