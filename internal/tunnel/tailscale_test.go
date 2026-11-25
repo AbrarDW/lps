@@ -245,3 +245,44 @@ func TestInvalidateStatus(t *testing.T) {
 		t.Fatal("Check again must see the new status")
 	}
 }
+
+func TestParseServeConfig(t *testing.T) {
+	data := []byte(`{
+  "TCP": {
+    "443": {"HTTPS": true},
+    "8443": {"HTTPS": true},
+    "2201": {"TCPForward": "127.0.0.1:2201"},
+    "9000": {"HTTPS": true}
+  },
+  "Web": {
+    "home-pc.tail1234.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:7070"}}},
+    "home-pc.tail1234.ts.net:8443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:8100"}}},
+    "home-pc.tail1234.ts.net:9000": {"Handlers": {"/docs": {"Path": "/srv/docs"}}}
+  },
+  "AllowFunnel": {"home-pc.tail1234.ts.net:8443": true}
+}`)
+	got, err := ParseServeConfig(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int]Exposure{
+		443:  {Proto: ProtoHTTPS, Port: 443, LocalPort: 7070},
+		8443: {Proto: ProtoHTTPS, Port: 8443, LocalPort: 8100, Public: true},
+		2201: {Proto: ProtoTCP, Port: 2201, LocalPort: 2201},
+	}
+	for p, e := range want {
+		if got[p].Exposure != e {
+			t.Fatalf("port %d = %+v, want %+v", p, got[p], e)
+		}
+	}
+	if got[443].Target != "http://127.0.0.1:7070" {
+		t.Fatalf("target = %q", got[443].Target)
+	}
+	// Something LPS wouldn't create: not an exposure, but described.
+	if got[9000].Proto != "" || got[9000].Target != "/docs /srv/docs" {
+		t.Fatalf("9000 = %+v", got[9000])
+	}
+	if m, err := ParseServeConfig([]byte("{}")); err != nil || len(m) != 0 {
+		t.Fatalf("empty: %v %v", m, err)
+	}
+}

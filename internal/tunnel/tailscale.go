@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -271,6 +272,104 @@ func ParseServePorts(data []byte) (map[int]bool, error) {
 		}
 	}
 	return ports, nil
+}
+
+// ParseServeConfig reads `tailscale serve status --json` into the exposures
+// it describes, by remote port. Entries LPS can't describe as an Exposure
+// (paths other than /, other targets) are returned with Proto "" and
+// Target set, so callers can still report them.
+func ParseServeConfig(data []byte) (map[int]ServeEntry, error) {
+	data = bytes.TrimSpace(data)
+	out := map[int]ServeEntry{}
+	if len(data) == 0 || string(data) == "{}" || string(data) == "null" {
+		return out, nil
+	}
+	var sc struct {
+		TCP map[string]struct {
+			HTTPS      bool   `json:"HTTPS"`
+			HTTP       bool   `json:"HTTP"`
+			TCPForward string `json:"TCPForward"`
+		} `json:"TCP"`
+		Web map[string]struct {
+			Handlers map[string]struct {
+				Proxy string `json:"Proxy"`
+				Path  string `json:"Path"`
+				Text  string `json:"Text"`
+			} `json:"Handlers"`
+		} `json:"Web"`
+		AllowFunnel map[string]bool `json:"AllowFunnel"`
+	}
+	if err := json.Unmarshal(data, &sc); err != nil {
+		return nil, fmt.Errorf("parse tailscale serve status: %w", err)
+	}
+	localPort := func(target, scheme string) int {
+		rest, ok := strings.CutPrefix(target, scheme)
+		if !ok {
+			return 0
+		}
+		host, port, err := net.SplitHostPort(strings.TrimSuffix(rest, "/"))
+		if err != nil || (host != "127.0.0.1" && host != "localhost") {
+			return 0
+		}
+		n, _ := strconv.Atoi(port)
+		return n
+	}
+	for k, v := range sc.TCP {
+		port, err := strconv.Atoi(k)
+		if err != nil {
+			continue
+		}
+		e := ServeEntry{}
+		switch {
+		case v.TCPForward != "":
+			e.Target = v.TCPForward
+			if n := localPort("tcp://"+v.TCPForward, "tcp://"); n > 0 {
+				e.Exposure = Exposure{Proto: ProtoTCP, Port: port, LocalPort: n}
+			}
+		case v.HTTPS:
+			for host, web := range sc.Web {
+				if !strings.HasSuffix(host, ":"+k) {
+					continue
+				}
+				if len(web.Handlers) == 1 {
+					if h, ok := web.Handlers["/"]; ok && h.Proxy != "" {
+						e.Target = h.Proxy
+						if n := localPort(h.Proxy, "http://"); n > 0 {
+							e.Exposure = Exposure{Proto: ProtoHTTPS, Port: port, LocalPort: n, Public: sc.AllowFunnel[host]}
+						}
+					}
+				}
+				if e.Target == "" {
+					for path, h := range web.Handlers {
+						e.Target = strings.TrimSpace(path + " " + h.Proxy + h.Path + h.Text)
+						break
+					}
+				}
+			}
+		default:
+			e.Target = "another kind of setting"
+		}
+		out[port] = e
+	}
+	return out, nil
+}
+
+// ServeEntry is one port of the Tailscale serve configuration.
+type ServeEntry struct {
+	Exposure        // Proto is "" when the entry isn't a plain LPS-style exposure
+	Target   string `json:"target"` // what it points to, for messages
+}
+
+// Configured returns the serve configuration by remote port.
+func (t *Tailscale) Configured(ctx context.Context) (map[int]ServeEntry, error) {
+	out, err := t.cli(ctx, "serve", "status", "--json")
+	if err != nil {
+		return nil, err
+	}
+	if i := strings.Index(out, "{"); i >= 0 {
+		out = out[i:]
+	}
+	return ParseServeConfig([]byte(out))
 }
 
 // UsedPorts implements Provider.
