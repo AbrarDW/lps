@@ -63,6 +63,16 @@ func Run(ctx context.Context, o Options) error {
 		return err
 	}
 
+	// Take the dashboard port before anything else, so "address already in
+	// use" is reported right away and a second copy of LPS never starts its
+	// background jobs (which manage shared Docker containers) or opens the
+	// database.
+	ln, err := net.Listen("tcp", o.Addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", o.Addr, err)
+	}
+	defer ln.Close()
+
 	st, err := store.Open(ctx, filepath.Join(o.DataDir, "lps.db"))
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -95,9 +105,7 @@ func Run(ctx context.Context, o Options) error {
 	if !o.NoUpdateCheck {
 		cfg.UpdateRepo = update.DefaultRepo
 	}
-	if _, p, err := net.SplitHostPort(o.Addr); err == nil {
-		cfg.DashboardPort, _ = strconv.Atoi(p)
-	}
+	cfg.DashboardPort = ln.Addr().(*net.TCPAddr).Port
 	var tp tunnel.Provider
 	if !o.NoRemote {
 		tp = tunnel.NewTailscale()
@@ -112,11 +120,6 @@ func Run(ctx context.Context, o Options) error {
 	srv := api.New(cfg, st, eng, tp, web.Dist(), logger)
 	defer srv.Shutdown()
 
-	// Listen first so "address already in use" is reported immediately.
-	ln, err := net.Listen("tcp", o.Addr)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", o.Addr, err)
-	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- httpSrv.Serve(ln) }()

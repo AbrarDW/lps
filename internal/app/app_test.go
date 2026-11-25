@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -77,10 +78,16 @@ func TestRunReportsPortInUse(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), OnReady: func(u string) { ready <- u }})
 	}()
 	url := <-ready
-	err := Run(ctx, Options{Addr: strings.TrimPrefix(url, "http://"), DataDir: dataDir(t), NoRemote: true,
+	second := dataDir(t)
+	err := Run(ctx, Options{Addr: strings.TrimPrefix(url, "http://"), DataDir: second, NoRemote: true,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err == nil || !strings.Contains(err.Error(), "listen") {
 		t.Fatalf("want listen error, got %v", err)
+	}
+	// The second copy stops before opening its database or starting
+	// background jobs that manage the shared Docker containers.
+	if _, err := os.Stat(filepath.Join(second, "lps.db")); !os.IsNotExist(err) {
+		t.Fatalf("second copy opened its database (stat: %v)", err)
 	}
 	// Stop the first server and wait for it to close its database: on
 	// Windows an open file can't be deleted, so the temp-dir cleanup would
