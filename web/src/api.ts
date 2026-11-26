@@ -338,6 +338,11 @@ export interface SetupChecks {
 export interface AutostartState {
   supported: boolean;
   enabled: boolean;
+  os?: string;
+  /** What the switch does, when it isn't "start with Windows" (Linux). */
+  label?: string;
+  /** Extra advice, e.g. how to start at boot on Linux. */
+  note?: string;
   error?: string;
 }
 

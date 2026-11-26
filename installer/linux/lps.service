@@ -1,0 +1,17 @@
+# systemd *user* unit: LPS runs as you, so it can read your project folders,
+# use your Docker access and keep its data in ~/.local/share/lps.
+#
+#   systemctl --user enable --now lps     start now and at every sign-in
+#   sudo loginctl enable-linger $USER     also start at boot, before sign-in
+#   journalctl --user -u lps -f           follow the log
+[Unit]
+Description=LPS - Local Personal Server
+Documentation=https://github.com/AbrarDW/lps
+
+[Service]
+ExecStart=/usr/bin/lpsd serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

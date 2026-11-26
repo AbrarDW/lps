@@ -1,11 +1,11 @@
-name: Windows installer
+name: Installers
 
 on:
   pull_request:
   push:
     branches: [master]
     tags: ["v*"]
-  # One-click releases: Actions → Windows installer → Run workflow, on master,
+  # One-click releases: Actions → Installers → Run workflow, on master,
   # with a version number. Leave the version empty to only build.
   workflow_dispatch:
     inputs:
@@ -21,11 +21,45 @@ on:
         default: false
 
 permissions:
-  contents: write # create GitHub Releases and attach the installer
+  contents: write # create GitHub Releases and attach the installers
 
 jobs:
-  installer:
+  # Checks a one-click release request and hands the version to the builds.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Inputs reach scripts only through env, never ${{ }} inside run:, so a
+      # crafted version string cannot inject commands.
+      - name: Check the release request
+        id: check
+        if: github.event_name == 'workflow_dispatch' && inputs.release != ''
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          v=$(printf '%s' "$RELEASE" | tr -d '[:space:]'); v=${v#v}
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Version '$RELEASE' is not like 1.2.3 or 1.2.3-beta.1"; exit 1
+          fi
+          if [ "$GITHUB_REF" != refs/heads/master ]; then
+            echo "::error::Releases are made from master; this run is on $GITHUB_REF. Choose master in 'Use workflow from'."; exit 1
+          fi
+          git fetch --tags --quiet origin
+          if [ -n "$(git tag --list "v$v")" ]; then echo "::error::Tag v$v already exists. Pick a new version."; exit 1; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$v from $GITHUB_SHA"
+
+  windows:
+    needs: prepare
     runs-on: windows-latest
+    env:
+      LPS_VERSION: ${{ needs.prepare.outputs.version }} # empty: git describe
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,23 +72,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-
-      # Inputs reach scripts only through env, never ${{ }} inside run:, so a
-      # crafted version string cannot inject commands.
-      - name: Check the release request
-        if: github.event_name == 'workflow_dispatch' && inputs.release != ''
-        shell: pwsh
-        env:
-          RELEASE: ${{ inputs.release }}
-        run: |
-          $v = $env:RELEASE.Trim() -replace '^v', ''
-          if ($v -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Version '$($env:RELEASE)' is not like 1.2.3 or 1.2.3-beta.1" }
-          if ($env:GITHUB_REF -ne 'refs/heads/master') { throw "Releases are made from master; this run is on $($env:GITHUB_REF). Choose master in 'Use workflow from'." }
-          git fetch --tags --quiet origin
-          if (git tag --list "v$v") { throw "Tag v$v already exists. Pick a new version." }
-          "LPS_VERSION=$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-          "LPS_RELEASE_TAG=v$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-          Write-Host "Releasing v$v from $($env:GITHUB_SHA)"
 
       - name: Ensure Inno Setup 6
         shell: pwsh
@@ -188,36 +205,125 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LPS-Setup
+          name: LPS-windows
           path: |
             dist/LPS-Setup-*.exe
             dist/LPS-Setup-*.exe.sha256
           if-no-files-found: error
 
-      # A pushed v* tag (or a release published in the GitHub UI) gets the
-      # installer attached to its release.
+  linux:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe for the version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build lpsd for amd64 and arm64
+        env:
+          LPS_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [ -n "$LPS_VERSION" ]; then v=v$LPS_VERSION; else v=$(git describe --tags --always --dirty 2>/dev/null || echo dev); fi
+          echo "LPS_BUILD_VERSION=$v" >> "$GITHUB_ENV"
+          (cd web && npm ci && npm run build)
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -ldflags "-s -w -X main.version=$v" -o bin/lpsd-linux-$arch ./cmd/lpsd
+          done
+
+      - name: Build .deb packages
+        run: |
+          for arch in amd64 arm64; do
+            installer/linux/build-deb.sh bin/lpsd-linux-$arch $arch "$LPS_BUILD_VERSION" dist
+          done
+          for f in dist/*.deb; do echo "$f: $(dpkg-deb --field "$f" Version Architecture | tr '\n' ' ')"; done
+          (cd dist && sha256sum -c ./*.sha256)
+
+      # Install the amd64 package the way a user would (sudo, so SUDO_USER is
+      # this runner's user): LPS must come up as that user's systemd service,
+      # survive an upgrade and be stopped again by removal.
+      - name: Install, upgrade and remove the package
+        timeout-minutes: 10
+        run: |
+          set -x
+          deb=$(ls dist/lps_*_amd64.deb)
+          uid=$(id -u)
+          sudo loginctl enable-linger "$USER" # start this user's systemd manager
+          for i in $(seq 30); do [ -S /run/user/$uid/bus ] && break; sleep 1; done
+          export XDG_RUNTIME_DIR=/run/user/$uid
+          health() {
+            for i in $(seq 30); do curl -fsS http://127.0.0.1:7070/api/health >/dev/null 2>&1 && return 0; sleep 1; done
+            journalctl --user -u lps --no-pager | tail -50; return 1
+          }
+
+          sudo dpkg -i "$deb"
+          test -x /usr/bin/lpsd
+          systemctl --user is-enabled lps.service
+          health
+          pid=$(systemctl --user show -p MainPID --value lps.service)
+          echo "running as pid $pid"
+          curl -fsS http://127.0.0.1:7070/api/setup/checks; echo
+
+          # Reinstall = upgrade: the service must restart on the new binary.
+          sudo dpkg -i "$deb"
+          health
+          new=$(systemctl --user show -p MainPID --value lps.service)
+          [ "$new" != "$pid" ] || { echo "::error::LPS was not restarted by the upgrade"; exit 1; }
+
+          sudo dpkg -r lps
+          if test -e /usr/bin/lpsd; then echo "::error::lpsd still installed after removal"; exit 1; fi
+          if systemctl --user is-active --quiet lps.service; then echo "::error::LPS still running after removal"; exit 1; fi
+          if curl -fsS http://127.0.0.1:7070/api/health >/dev/null 2>&1; then echo "::error::dashboard still answering after removal"; exit 1; fi
+          echo "Install/upgrade/remove OK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LPS-linux
+          path: |
+            dist/*.deb
+            dist/*.deb.sha256
+          if-no-files-found: error
+
+  # A pushed v* tag (or a release published in the GitHub UI) gets the
+  # installers attached to its release; a one-click release creates the tag
+  # on the tested commit and the release.
+  release:
+    needs: [prepare, windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v') || needs.prepare.outputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: ls -l dist
+
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/LPS-Setup-*.exe
-            dist/LPS-Setup-*.exe.sha256
+          files: dist/*
 
-      # One-click release: creates the tag on the tested commit and the release.
       - name: Publish release
-        if: env.LPS_RELEASE_TAG != ''
+        if: needs.prepare.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.LPS_RELEASE_TAG }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: LPS ${{ env.LPS_RELEASE_TAG }}
+          name: LPS ${{ needs.prepare.outputs.tag }}
           prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
           body: |
-            **Install:** download `LPS-Setup-${{ env.LPS_VERSION }}.exe` below and run it (no administrator rights needed). Until the installer is code-signed, Chrome or Windows may warn about it; see [Download blocked?](https://github.com/${{ github.repository }}#download-blocked) in the README. Check the file against `LPS-Setup-${{ env.LPS_VERSION }}.exe.sha256`.
+            **Windows:** download `LPS-Setup-${{ needs.prepare.outputs.version }}.exe` below and run it (no administrator rights needed). Until the installer is code-signed, Chrome or Windows may warn about it; see [Download blocked?](https://github.com/${{ github.repository }}#download-blocked) in the README. Needs Windows 10/11 with WSL2 and Docker Desktop; the setup wizard walks you through both.
 
-            **Needs:** Windows 10/11 with WSL2 and Docker Desktop; the setup wizard walks you through both.
-          files: |
-            dist/LPS-Setup-*.exe
-            dist/LPS-Setup-*.exe.sha256
+            **Linux (Debian, Ubuntu):** download the `.deb` for your machine (`amd64` for most PCs, `arm64` for a Raspberry Pi or other ARM board) and install it with `sudo apt install ./lps_*.deb`. Needs Docker; see [Install on Linux](https://github.com/${{ github.repository }}#install-on-linux).
+
+            Check any file against the `.sha256` published next to it.
+          files: dist/*
