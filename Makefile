@@ -2,7 +2,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all web build build-all deb test run clean
+.PHONY: all web build build-all deb pkg test run clean
 
 all: web build
 
@@ -27,6 +27,13 @@ deb:
 		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -ldflags "$(LDFLAGS)" -o bin/lpsd-linux-$$arch ./cmd/lpsd && \
 		installer/linux/build-deb.sh bin/lpsd-linux-$$arch $$arch "$(VERSION)" dist || exit 1; \
 	done
+
+# macOS installer (run on macOS): dist/LPS-<version>-macOS.pkg, universal.
+pkg:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/lpsd-darwin-arm64 ./cmd/lpsd
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/lpsd-darwin-amd64 ./cmd/lpsd
+	lipo -create -output bin/lpsd-darwin-universal bin/lpsd-darwin-arm64 bin/lpsd-darwin-amd64
+	installer/macos/build-pkg.sh bin/lpsd-darwin-universal "$(VERSION)" dist
 
 test:
 	go vet ./...

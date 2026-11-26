@@ -140,7 +140,7 @@ func (s *Server) handleSetAutostart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.hooks.autostart.Supported() {
-		writeError(w, http.StatusNotImplemented, "starting at sign-in needs the installed LPS app (the Windows installer or the Linux package)")
+		writeError(w, http.StatusNotImplemented, "starting at sign-in needs LPS installed from its installer or package")
 		return
 	}
 	if err := s.hooks.autostart.Set(req.Enabled); err != nil {

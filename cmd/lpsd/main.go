@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -35,6 +36,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "lpsd:", err)
 			os.Exit(1)
 		}
+	case "autostart":
+		if err := autostart(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "lpsd:", err)
+			os.Exit(1)
+		}
 	case "version", "--version", "-v":
 		fmt.Println("lpsd", version)
 	case "help", "--help", "-h":
@@ -53,6 +59,9 @@ Usage:
   lpsd serve [flags]   start the dashboard and API
   lpsd disable-2fa     turn off two-factor sign-in (if you lost your phone
                        and your recovery codes); run it on this PC
+  lpsd autostart [on|off]
+                       show, or turn on or off, starting LPS when you sign
+                       in (needs the installed package or Windows app)
   lpsd version         print the version
 
 Run "lpsd serve -h" for flags.
@@ -102,6 +111,35 @@ func disable2FA(args []string) error {
 	_ = st.AddEvent(ctx, &store.Event{Level: store.LevelWarning, Kind: "auth.2fa_off", Subject: "auth",
 		Message: fmt.Sprintf("Two-factor sign-in turned off for %s from this PC (lpsd disable-2fa)", u.Username)})
 	fmt.Printf("Two-factor sign-in is now off for %s. Sign in with your password, then turn it on again under Account.\n", u.Username)
+	return nil
+}
+
+// autostart shows or changes whether LPS starts at sign-in, the same switch
+// as on the dashboard. The macOS package's installer uses it to set up the
+// launchd agent as the signed-in user.
+func autostart(args []string) error {
+	a := platform.NewAutostart()
+	if !a.Supported() {
+		return errors.New("starting at sign-in needs LPS installed from its package (or the Windows installer)")
+	}
+	switch {
+	case len(args) == 0:
+	case len(args) == 1 && (args[0] == "on" || args[0] == "off"):
+		if err := a.Set(args[0] == "on"); err != nil {
+			return err
+		}
+	default:
+		return errors.New("usage: lpsd autostart [on|off]")
+	}
+	on, err := a.Enabled()
+	if err != nil {
+		return err
+	}
+	state := "off"
+	if on {
+		state = "on"
+	}
+	fmt.Println("Start LPS at sign-in:", state)
 	return nil
 }
 
