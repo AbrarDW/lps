@@ -2,7 +2,7 @@
 
 Turn your home PC into your own VPS host. LPS runs **Linux VPS** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
 
-> Status: **early development**. Linux VPS with a [browser terminal](#terminal-in-the-browser), app deploys (with generated Dockerfiles), [remote access with Tailscale](#remote-access-with-tailscale) and the [Windows installer](#install-on-windows) work. A reverse proxy with hostnames is next. See the [roadmap](#roadmap).
+> Status: **early development**, but the core works: Linux VPS with a [browser terminal](#terminal-in-the-browser) and [snapshots](#snapshots), app deploys from a folder or [git repository](#deploying-from-a-git-repository) (with generated Dockerfiles), [addresses by name](#app-addresses-by-name) and [on your own domain](#your-own-domain-cloudflare-tunnel), remote access with [Tailscale](#remote-access-with-tailscale) or [Cloudflare](#quick-public-links-cloudflare), [two-factor sign-in](#two-factor-sign-in), and the [Windows installer](#install-on-windows) with one-click updates. Linux and macOS packages are next. See the [roadmap](#roadmap).
 
 The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy dotted paper, built with Tailwind 4 (tokens in `web/src/index.css`) and IBM Plex fonts bundled with the app, so it works offline.
 
@@ -51,12 +51,16 @@ Get-FileHash -Algorithm SHA256 .\LPS-Setup-*.exe
 
 Or build the installer yourself from source with `.\build.ps1 installer` (see [Build from source](#build-from-source)); nothing is downloaded then.
 
-**For maintainers: turning on code signing.** Signing makes these warnings go away (immediately with an EV certificate, after some downloads with a standard one). `build.ps1` signs `lps.exe`, `lpsd.exe` and the setup program whenever a certificate is configured:
+**For maintainers: turning on code signing.** Signing shows who published the installer and stops anyone changing it unnoticed. The SmartScreen and browser warnings then fade as the signed installer builds a download reputation; since 2024 even an EV certificate no longer skips that. `build.ps1` signs `lps.exe`, `lpsd.exe` and the setup program whenever a `.pfx` certificate is configured:
 
 - **Locally:** set `LPS_SIGN_PFX` to a `.pfx` code-signing certificate and `LPS_SIGN_PASSWORD` to its password, then run `.\build.ps1 installer`.
 - **In GitHub Actions:** add the repository secrets `WINDOWS_SIGN_PFX_BASE64` (the `.pfx`, base64-encoded: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))`) and `WINDOWS_SIGN_PASSWORD`. Every build is then signed and timestamped.
 
-Certificates from a certificate authority come as (or can be exported to) a `.pfx`. Free or low-cost options for an open-source project, [SignPath Foundation](https://signpath.org/) (free for OSS) and Microsoft's Azure Trusted Signing, don't hand you a `.pfx`: they sign through their own GitHub Action, which would take the place of the *Load the code-signing certificate* step in `.github/workflows/windows-installer.yml`.
+A newly bought certificate will usually **not** come as a `.pfx`: since June 2023 certificate authorities must keep code-signing keys on a hardware token or in their cloud signing service, so the `.pfx` path only fits a certificate you already have in that form. The practical options all sign through their own tool or GitHub Action, which would take the place of the *Load the code-signing certificate* step in `.github/workflows/windows-installer.yml`:
+
+- [SignPath Foundation](https://signpath.org/): free for open-source projects. Apply with the repository; the publisher shown is the SignPath Foundation, naming LPS.
+- Microsoft's Azure Trusted Signing: about $10 a month, after Microsoft verifies your identity (check whether your country and account type are eligible).
+- A certificate from a certificate authority (DigiCert, Sectigo, SSL.com…) with its cloud signing service: roughly $200–500 a year. A USB token can't be used from GitHub's hosted runners.
 
 ## How it works
 
