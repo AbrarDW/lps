@@ -17,15 +17,17 @@ Click **New app** and enter the absolute path to a project folder. Check the por
 
 ```mermaid
 flowchart TD
-    A["New app"] --> B{"Dockerfile in<br/>project folder?"}
-    B -- yes --> C["Pack folder<br/>(honours .dockerignore,<br/>skips .git, node_modules, .venv)"]
+    A["New app"] --> B{"Dockerfile in<br/>the code?"}
+    B -- yes --> S
     B -- no --> G1["LPS detects the project type<br/>Node · Python · Go · PHP · static"]
     G1 --> G2["You review / edit the<br/>generated Dockerfile"]
-    G2 --> C
-    R["Redeploy"] --> C
+    G2 --> S
+    R["Redeploy · new commit<br/>(auto-deploy)"] --> S
+    S{"Code from"} -- folder --> C["Pack folder<br/>(honours .dockerignore,<br/>skips .git, node_modules, .venv)"]
+    S -- git --> GC["Shallow clone of the branch"] --> C
     C --> D["docker build → lps-app-name:N<br/>(log streamed to the dashboard)"]
     D -- "build fails" --> F["Deployment marked failed<br/>running version keeps serving"]
-    D -- "build OK" --> E["Replace container<br/>127.0.0.1:81xx → app port"]
+    D -- "build OK" --> E["Replace container with env vars<br/>127.0.0.1:81xx → app port"]
 ```
 
 ## Projects without a Dockerfile
@@ -71,6 +73,8 @@ A VPS publishes only its SSH port, so each VPS app gets a small relay container 
 ## Environment variables and secrets
 
 On an app's **Environment** tab, add variables one by one or **paste a `.env` file**. Mark the secret ones as **secret**, then click **Save & redeploy**.
+
+![Environment tab with a saved secret](images/app-env.png)
 
 - **Container apps:** the variables are set on the container.
 - **Apps in a VPS:** the variables are passed to the install and start commands. LPS sets `PORT`, `HOST` and `HOME` itself, so you can't use those names.

@@ -59,6 +59,8 @@ Only the signed-in admin can open a terminal. The WebSocket refuses cross-site r
 
 The **Snapshots** card on a VPS page saves **everything** in the VPS: installed software and settings (the container's files, saved as an image) and a copy of `/home`. Snapshots stay in Docker on this PC.
 
+![Snapshots card with a daily schedule and one snapshot](images/snapshots.png)
+
 - **Take snapshot** works while the VPS runs; the VPS is paused only while its files are saved. For something that writes all the time, such as a database, stop the VPS first to get a fully consistent copy.
 - **Restore** puts the VPS back exactly as it was: files, users, passwords, SSH keys and host keys. LPS snapshots the current state first, so you can undo a restore. Apps running in the VPS come back on their own.
 - **New VPS from it** makes a copy with a new name and SSH port.
@@ -72,11 +74,15 @@ The **Snapshots** card on a VPS page saves **everything** in the VPS: installed 
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> provisioning: create
+    [*] --> provisioning: create, or from a snapshot / .lpsnap file
     provisioning --> running: started
     provisioning --> error: build/create failed
     running --> stopped: stop
     stopped --> running: start
+    running --> restoring: restore snapshot
+    stopped --> restoring: restore snapshot
+    restoring --> running: restored
+    restoring --> error: restore failed
     running --> [*]: delete
     stopped --> [*]: delete
     error --> [*]: delete

@@ -44,9 +44,11 @@ flowchart LR
 3. In LPS, open **Remote access** and turn it on. LPS publishes the dashboard, every VPS's SSH port and every app on your tailnet, and keeps that in sync as you add or delete things.
 4. On your phone or laptop, install Tailscale, sign in with the same account, and open the dashboard address LPS shows (like `https://home-pc.your-tailnet.ts.net`).
 
-| Remote access page | App with a public link | Phone |
-|---|---|---|
-| ![Remote access page](images/remote.png) | ![App with private and public links](images/remote-app.png) | ![Remote access on a phone](images/remote-mobile.png) |
+![Remote access page with every step done and the list of published addresses](images/remote.png)
+
+The dashboard works on a phone too:
+
+<img src="images/remote-mobile.png" alt="LPS dashboard on a phone" width="300">
 
 **What gets published:**
 
@@ -69,6 +71,12 @@ flowchart LR
 - **"Could not resolve hostname", or the site can't be reached:** the device must have Tailscale connected and signed in to the **same account** as the home PC. `*.ts.net` addresses don't exist for other devices. On a Mac, keep **Use Tailscale DNS settings** on, and turn off other VPNs and iCloud Private Relay.
 - **It worked before but doesn't now:** the home PC must be on and awake, with Docker, Tailscale and lpsd running. Click **Check again** on the Remote access page and look for errors.
 - **A public link doesn't open:** it can take about a minute to start working.
+
+## Public links
+
+Every app's **Public link** card offers all three ways to share it outside your own devices: your own domain, a Cloudflare quick link and a Tailscale Funnel link.
+
+![Public link card on an app's page](images/remote-app.png)
 
 ## Cloudflare quick links
 
@@ -101,6 +109,8 @@ How it works:
 ## Two-factor sign-in
 
 Open **Account** (click your name at the top right) → **Turn on two-factor sign-in**. Scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden, Authy…) and enter the code it shows. From then on, signing in needs your password and a 6-digit code.
+
+![Turning on two-factor sign-in on the Account page](images/two-factor.png)
 
 You also get **10 recovery codes**. Save them: each one signs you in once if you don't have your phone. You can make new ones on the Account page.
 

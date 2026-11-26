@@ -61,19 +61,23 @@ Then open <http://127.0.0.1:7070> and create the admin account.
 ## Project layout
 
 ```mermaid
-flowchart TB
-    main["cmd/lpsd<br/>entry point, flags"] --> api["internal/api<br/>HTTP handlers, auth, background jobs"]
+flowchart LR
+    main["cmd/lpsd<br/>entry point, flags, subcommands"] --> appk["internal/app<br/>shared server startup"]
+    desk["cmd/lps<br/>desktop app + tray (Windows)"] --> appk
+    appk --> web["web/ (React)<br/>embedded dashboard"]
+    appk --> api["internal/api<br/>HTTP handlers, background jobs"]
     api --> store["internal/store<br/>SQLite + migrations"]
-    api --> auth["internal/auth<br/>bcrypt, sessions, rate limit"]
+    api --> auth["internal/auth<br/>bcrypt, sessions, 2FA, rate limit"]
     api --> dock["internal/docker<br/>Engine interface + Docker client"]
-    api --> build["internal/builder<br/>build context, .dockerignore"]
+    api --> build["internal/builder<br/>build context, Dockerfile templates"]
+    api --> git["internal/gitsrc<br/>pure-Go git clones"]
     api --> tun["internal/tunnel<br/>Provider interface + Tailscale CLI driver"]
+    api --> cf["internal/cloudflare<br/>Tunnel + DNS API client"]
+    api --> upd["internal/update<br/>GitHub release checks"]
+    api --> plat["internal/platform<br/>OS checks, data dirs, autostart"]
     dock --> img["images/ubuntu-vps<br/>embedded VPS image"]
-    main --> web["web/ (React)<br/>embedded dashboard"]
-    desk["cmd/lps<br/>desktop app + tray (Windows)"] --> appk["internal/app<br/>shared server startup"]
-    main --> appk
-    appk --> api
-    inst["installer/windows/lps.iss<br/>Inno Setup"] -.packages.-> desk
+    inst["installer/<br/>windows · linux · macos"] -.packages.-> main
+    inst -.packages.-> desk
 ```
 
 - **Frontend:** `web/` (React, Vite, TypeScript, TanStack Query, Tailwind 4, with tokens in `web/src/index.css`). IBM Plex fonts are bundled, so the dashboard works offline. For hot reload, run `npm run dev` in `web/` while `lpsd serve` is running; Vite proxies `/api` to it.
