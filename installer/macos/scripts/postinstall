@@ -1,0 +1,63 @@
+#!/bin/sh
+# Runs as root after the files are copied.
+#
+# Fresh install: set LPS up as a launchd agent for the signed-in user, start
+# it and open the setup wizard, like the Windows installer does.
+# Upgrade: restart LPS for every user running it, on the new binary. VPS and
+# apps run in Docker and keep running meanwhile.
+label=com.abrardw.lps
+state_file=/var/run/$label.pkg-state
+state=$(cat "$state_file" 2>/dev/null)
+rm -f "$state_file"
+
+# load <uid> <plist>: (re)load a user's agent. bootout returns before the old
+# LPS has fully gone, so retry the bootstrap for a while.
+load() {
+	launchctl bootout "gui/$1/$label" >/dev/null 2>&1
+	i=0
+	while [ $i -lt 20 ]; do
+		launchctl bootstrap "gui/$1" "$2" 2>/dev/null && return 0
+		i=$((i + 1))
+		sleep 0.5
+	done
+	launchctl bootstrap "gui/$1" "$2"
+}
+
+if [ -n "$state" ]; then
+	for plist in /Users/*/Library/LaunchAgents/$label.plist; do
+		[ -f "$plist" ] || continue
+		user=$(stat -f%Su "$plist")
+		uid=$(stat -f%u "$plist")
+		# Rewrite the agent in case this version changed it, as its owner.
+		sudo -H -u "$user" /usr/local/bin/lpsd autostart on >/dev/null 2>&1 || true
+		if launchctl print "gui/$uid/$label" >/dev/null 2>&1; then
+			load "$uid" "$plist" || echo "LPS: could not restart LPS for $user; sign out and back in." >&2
+		fi
+	done
+	exit 0
+fi
+
+user=$(stat -f%Su /dev/console)
+if [ -z "$user" ] || [ "$user" = root ]; then
+	echo "LPS: no one is signed in; run 'lpsd autostart on' as your user, then sign out and back in."
+	exit 0
+fi
+if ! sudo -H -u "$user" /usr/local/bin/lpsd autostart on; then
+	echo "LPS: could not set up the launch agent for $user." >&2
+	exit 0 # the files are installed; don't fail the whole install
+fi
+uid=$(id -u "$user")
+home=$(dscl . -read "/Users/$user" NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')
+load "$uid" "$home/Library/LaunchAgents/$label.plist" || exit 0
+
+# Open the setup wizard in the user's browser once the dashboard answers.
+i=0
+while [ $i -lt 30 ]; do
+	if curl -fsS -o /dev/null http://127.0.0.1:7070/api/health 2>/dev/null; then
+		launchctl asuser "$uid" sudo -u "$user" open http://127.0.0.1:7070 || true
+		break
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+exit 0

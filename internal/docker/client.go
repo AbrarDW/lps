@@ -33,13 +33,17 @@ type Client struct {
 }
 
 // NewClient connects using DOCKER_HOST etc., or the platform default
-// (npipe on Windows, unix socket on Linux/macOS).
+// (npipe on Windows, unix socket on Linux/macOS; see defaultSocket).
 func NewClient(bindIP string) (*Client, error) {
 	ip, err := netip.ParseAddr(bindIP)
 	if err != nil {
 		return nil, fmt.Errorf("bind ip: %w", err)
 	}
-	c, err := client.New(client.FromEnv, client.WithAPIVersionNegotiation())
+	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+	if host := defaultSocket(); host != "" {
+		opts = append(opts, client.WithHost(host))
+	}
+	c, err := client.New(opts...)
 	if err != nil {
 		return nil, err
 	}

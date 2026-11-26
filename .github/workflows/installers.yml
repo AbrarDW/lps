@@ -291,11 +291,88 @@ jobs:
             dist/*.deb.sha256
           if-no-files-found: error
 
+  macos:
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe for the version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Go tests on macOS (macOS-only code paths)
+        run: go test ./internal/platform/... ./internal/docker/... ./internal/tunnel/...
+
+      - name: Build a universal lpsd and the .pkg
+        env:
+          LPS_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [ -n "$LPS_VERSION" ]; then v=v$LPS_VERSION; else v=$(git describe --tags --always --dirty 2>/dev/null || echo dev); fi
+          (cd web && npm ci && npm run build)
+          make pkg VERSION="$v"
+          lipo -archs bin/lpsd-darwin-universal
+          (cd dist && shasum -a 256 -c ./*.pkg.sha256)
+          pkgutil --payload-files dist/*.pkg
+
+      # Install the package the way a user would: LPS must come up as the
+      # signed-in user's launch agent, restart on the new binary when the
+      # package is installed again, and be gone after lps-uninstall.
+      - name: Install, upgrade and uninstall the package
+        timeout-minutes: 10
+        run: |
+          set -x
+          pkg=$(ls dist/*.pkg)
+          uid=$(id -u)
+          echo "console user: $(stat -f%Su /dev/console), me: $(id -un)"
+          health() {
+            for i in $(seq 30); do curl -fsS http://127.0.0.1:7070/api/health >/dev/null 2>&1 && return 0; sleep 1; done
+            tail -50 ~/Library/Logs/LPS/lpsd.log; launchctl print gui/$uid/com.abrardw.lps; return 1
+          }
+          pid() { launchctl print gui/$uid/com.abrardw.lps | awk '$1 == "pid" {print $3}'; }
+
+          sudo installer -pkg "$pkg" -target /
+          test -x /usr/local/bin/lpsd
+          lpsd version
+          test -f ~/Library/LaunchAgents/com.abrardw.lps.plist
+          plutil -lint ~/Library/LaunchAgents/com.abrardw.lps.plist
+          health
+          old=$(pid); echo "running as pid $old"
+          lpsd autostart
+
+          # Installing again = upgrade: LPS must restart on the new binary.
+          sudo installer -pkg "$pkg" -target /
+          health
+          new=$(pid)
+          [ -n "$new" ] && [ "$new" != "$old" ] || { echo "::error::LPS was not restarted by the upgrade ($old -> $new)"; exit 1; }
+
+          sudo lps-uninstall
+          if test -e /usr/local/bin/lpsd; then echo "::error::lpsd still installed"; exit 1; fi
+          if test -e ~/Library/LaunchAgents/com.abrardw.lps.plist; then echo "::error::launch agent left behind"; exit 1; fi
+          if launchctl print gui/$uid/com.abrardw.lps >/dev/null 2>&1; then echo "::error::agent still loaded"; exit 1; fi
+          if curl -fsS http://127.0.0.1:7070/api/health >/dev/null 2>&1; then echo "::error::dashboard still answering after uninstall"; exit 1; fi
+          if pkgutil --pkg-info com.abrardw.lps >/dev/null 2>&1; then echo "::error::package receipt left behind"; exit 1; fi
+          echo "Install/upgrade/uninstall OK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LPS-macos
+          path: |
+            dist/*.pkg
+            dist/*.pkg.sha256
+          if-no-files-found: error
+
   # A pushed v* tag (or a release published in the GitHub UI) gets the
   # installers attached to its release; a one-click release creates the tag
   # on the tested commit and the release.
   release:
-    needs: [prepare, windows, linux]
+    needs: [prepare, windows, linux, macos]
     if: startsWith(github.ref, 'refs/tags/v') || needs.prepare.outputs.tag != ''
     runs-on: ubuntu-latest
     steps:
@@ -324,6 +401,8 @@ jobs:
             **Windows:** download `LPS-Setup-${{ needs.prepare.outputs.version }}.exe` below and run it (no administrator rights needed). Until the installer is code-signed, Chrome or Windows may warn about it; see [Download blocked?](https://github.com/${{ github.repository }}#download-blocked) in the README. Needs Windows 10/11 with WSL2 and Docker Desktop; the setup wizard walks you through both.
 
             **Linux (Debian, Ubuntu):** download the `.deb` for your machine (`amd64` for most PCs, `arm64` for a Raspberry Pi or other ARM board) and install it with `sudo apt install ./lps_*.deb`. Needs Docker; see [Install on Linux](https://github.com/${{ github.repository }}#install-on-linux).
+
+            **macOS (11 or later, Apple Silicon or Intel):** download `LPS-${{ needs.prepare.outputs.version }}-macOS.pkg` and open it. It isn't signed by Apple yet, so macOS may refuse to open it at first; see [Install on macOS](https://github.com/${{ github.repository }}#install-on-macos). Needs Docker Desktop, OrbStack or Colima.
 
             Check any file against the `.sha256` published next to it.
           files: dist/*

@@ -5,6 +5,7 @@ package platform
 import (
 	"context"
 	"os/exec"
+	"runtime"
 
 	"golang.org/x/sys/unix"
 )
@@ -21,7 +22,11 @@ func osChecks(context.Context) []Check {
 		c.Status, c.Detail = StatusOK, "Docker CLI found"
 	} else {
 		c.Status, c.Detail = StatusFail, DockerHint()
-		c.Fixes = []Fix{{FixLink, "Get Docker", "https://docs.docker.com/engine/install/"}}
+		url := "https://docs.docker.com/engine/install/"
+		if runtime.GOOS == "darwin" {
+			url = DockerDownloadURL
+		}
+		c.Fixes = []Fix{{FixLink, "Get Docker", url}}
 	}
 	return []Check{c}
 }

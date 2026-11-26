@@ -1,0 +1,16 @@
+#!/bin/sh
+# Runs as root before the files are copied. Note whether this is an upgrade
+# and whether LPS is running, for postinstall.
+label=com.abrardw.lps
+state=/var/run/$label.pkg-state
+rm -f "$state"
+[ -e /usr/local/bin/lpsd ] || exit 0
+echo installed >"$state"
+for plist in /Users/*/Library/LaunchAgents/$label.plist; do
+	[ -f "$plist" ] || continue
+	uid=$(stat -f%u "$plist")
+	if launchctl print "gui/$uid/$label" >/dev/null 2>&1; then
+		echo running >"$state"
+	fi
+done
+exit 0

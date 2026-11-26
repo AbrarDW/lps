@@ -2,7 +2,7 @@
 
 Turn your home PC into your own VPS host. LPS runs **Linux VPS** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
 
-> Status: **early development**, but the core works: Linux VPS with a [browser terminal](#terminal-in-the-browser) and [snapshots](#snapshots), app deploys from a folder or [git repository](#deploying-from-a-git-repository) (with generated Dockerfiles), [addresses by name](#app-addresses-by-name) and [on your own domain](#your-own-domain-cloudflare-tunnel), remote access with [Tailscale](#remote-access-with-tailscale) or [Cloudflare](#quick-public-links-cloudflare), [two-factor sign-in](#two-factor-sign-in), and installers for [Windows](#install-on-windows) (with one-click updates) and [Debian/Ubuntu](#install-on-linux). A macOS package is next. See the [roadmap](#roadmap).
+> Status: **early development**, but the core works: Linux VPS with a [browser terminal](#terminal-in-the-browser) and [snapshots](#snapshots), app deploys from a folder or [git repository](#deploying-from-a-git-repository) (with generated Dockerfiles), [addresses by name](#app-addresses-by-name) and [on your own domain](#your-own-domain-cloudflare-tunnel), remote access with [Tailscale](#remote-access-with-tailscale) or [Cloudflare](#quick-public-links-cloudflare), [two-factor sign-in](#two-factor-sign-in), and installers for [Windows](#install-on-windows) (with one-click updates), [Debian/Ubuntu](#install-on-linux) and [macOS](#install-on-macos). See the [roadmap](#roadmap).
 
 The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy dotted paper, built with Tailwind 4 (tokens in `web/src/index.css`) and IBM Plex fonts bundled with the app, so it works offline.
 
@@ -98,6 +98,37 @@ sudo loginctl enable-linger $USER
 **Uninstall:** `sudo apt remove lps` stops LPS and turns off its autostart for every user. Your data (`~/.local/share/lps`) and the VPS and apps in Docker are kept, so a reinstall picks them up.
 
 Other distributions: build from source (see [Linux / macOS](#linux--macos)), or run `make deb` to build the package yourself.
+
+## Install on macOS
+
+macOS 11 or later, on Apple Silicon or Intel (one universal package):
+
+1. Install Docker: [Docker Desktop](https://www.docker.com/products/docker-desktop/), [OrbStack](https://orbstack.dev/) or [Colima](https://github.com/abiosoft/colima). LPS finds any of their sockets by itself.
+2. Download **`LPS-<version>-macOS.pkg`** from the [Releases page](https://github.com/AbrarDW/lps/releases) and open it. It installs `lpsd` into `/usr/local/bin` (you'll be asked for your password).
+3. LPS starts as soon as the installer finishes and the setup wizard opens in your browser at <http://127.0.0.1:7070>.
+
+**"Apple could not verify…" or "unidentified developer"?** The package isn't signed with an Apple Developer ID yet, so macOS stops it the first time. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the message about LPS (on macOS 14 and earlier you can also Control-click the package and choose **Open**). Or install it from Terminal, which skips that check:
+
+```bash
+sudo installer -pkg ~/Downloads/LPS-*-macOS.pkg -target /
+```
+
+LPS runs as a **launch agent**: as you, not root, so it can read your project folders. It starts whenever you sign in and is restarted if it crashes; the **Start LPS when I sign in** switch on the dashboard (or `lpsd autostart off`) turns that off. Its data is in `~/Library/Application Support/LPS` and its log in `~/Library/Logs/LPS/lpsd.log`.
+
+| To… | Run |
+|---|---|
+| Stop LPS until you next sign in | `launchctl bootout gui/$(id -u)/com.abrardw.lps` |
+| Start it again | `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.abrardw.lps.plist` |
+| Restart it | `launchctl kickstart -k gui/$(id -u)/com.abrardw.lps` |
+| Follow its log | `tail -f ~/Library/Logs/LPS/lpsd.log` |
+
+**Updates:** the dashboard tells you when there is a new release. Download the new package and open it; LPS restarts on the new version while your VPS and apps keep running in Docker.
+
+**Uninstall:** `sudo lps-uninstall` stops LPS for every user and removes it. Your data and the VPS and apps in Docker are kept, so a reinstall picks them up.
+
+To build the package yourself on a Mac, run `make pkg` (after `make web`).
+
+**For maintainers: signing the macOS package.** Without an Apple Developer ID ($99 a year from the Apple Developer Program), macOS shows the warning above. With one, set `LPS_MAC_INSTALLER_IDENTITY` to the "Developer ID Installer: …" identity in your keychain and `build-pkg.sh` signs the package; it then also needs notarizing (`xcrun notarytool submit … --wait` and `xcrun stapler staple`) for the warning to go away. The workflow doesn't do either yet.
 
 ## How it works
 
@@ -536,7 +567,7 @@ flowchart TB
 1. On GitHub, open **Actions → Installers → Run workflow**.
 2. Leave **Use workflow from** on `master`, type the new version (for example `0.2.0`), tick **pre-release** if it is one, and press **Run workflow**.
 
-The run tests and builds the installers from the current `master`. Only if everything passes (including installing, upgrading and removing each one) does it create the tag `v0.2.0` and the release, with `LPS-Setup-0.2.0.exe`, `lps_0.2.0_amd64.deb`, `lps_0.2.0_arm64.deb`, a `.sha256` for each and notes generated from the merged pull requests. It refuses a version that isn't like `1.2.3` (or `1.2.3-beta.1`), a tag that already exists, and runs from any branch other than `master`. Leave the version empty to just build an installer.
+The run tests and builds the installers from the current `master`. Only if everything passes (including installing, upgrading and removing each one) does it create the tag `v0.2.0` and the release, with `LPS-Setup-0.2.0.exe`, `lps_0.2.0_amd64.deb`, `lps_0.2.0_arm64.deb`, `LPS-0.2.0-macOS.pkg`, a `.sha256` for each and notes generated from the merged pull requests. It refuses a version that isn't like `1.2.3` (or `1.2.3-beta.1`), a tag that already exists, and runs from any branch other than `master`. Leave the version empty to just build an installer.
 
 Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works: the installers are attached to that release.
 
@@ -548,7 +579,7 @@ flowchart LR
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name,<br/>✅ your own domain"]
     m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA,<br/>✅ Cloudflare quick links"]
     m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots,<br/>✅ scheduled + exported snapshots"]
-    m5["5. Packaging<br/>✅ Windows installer,<br/>✅ Linux .deb + systemd,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
+    m5["5. Packaging<br/>✅ Windows installer,<br/>✅ Linux .deb + systemd,<br/>✅ macOS .pkg + launchd,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
 
@@ -556,7 +587,7 @@ flowchart LR
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). ✅ addresses on your own domain through Cloudflare Tunnel.
 3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. ✅ Cloudflare quick links (public demo links, no account). ✅ your own domain through Cloudflare Tunnel.
 4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). ✅ automatic snapshots and snapshot files (export, import on another PC).
-5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. ✅ Linux `.deb` with a systemd user service. Next: macOS (launchd, .pkg).
+5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. ✅ Linux `.deb` with a systemd user service. ✅ macOS `.pkg` with a launchd agent. Next: signing the macOS package with an Apple Developer ID.
 
 ## License
 
