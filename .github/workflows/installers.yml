@@ -398,7 +398,7 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
           body: |
-            **Windows:** download `LPS-Setup-${{ needs.prepare.outputs.version }}.exe` below and run it (no administrator rights needed). Until the installer is code-signed, Chrome or Windows may warn about it; see [Download blocked?](https://github.com/${{ github.repository }}#download-blocked) in the README. Needs Windows 10/11 with WSL2 and Docker Desktop; the setup wizard walks you through both.
+            **Windows:** download `LPS-Setup-${{ needs.prepare.outputs.version }}.exe` below and run it (no administrator rights needed). Until the installer is code-signed, Chrome or Windows may warn about it; see [Download blocked?](https://github.com/${{ github.repository }}/blob/master/docs/install.md#download-blocked) in the install guide. Needs Windows 10/11 with WSL2 and Docker Desktop; the setup wizard walks you through both.
 
             **Linux (Debian, Ubuntu):** download the `.deb` for your machine (`amd64` for most PCs, `arm64` for a Raspberry Pi or other ARM board) and install it with `sudo apt install ./lps_*.deb`. Needs Docker; see [Install on Linux](https://github.com/${{ github.repository }}#install-on-linux).
 
