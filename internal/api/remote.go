@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abrardw/lps/internal/docker"
 	"github.com/abrardw/lps/internal/store"
 	"github.com/abrardw/lps/internal/tunnel"
 )
@@ -34,8 +35,11 @@ type exposureView struct {
 	tunnel.Exposure
 	Label string `json:"label"`
 	URL   string `json:"url"`
-	State string `json:"state"` // active | pending | error
+	State string `json:"state"` // active | stopped | pending | error
 	Error string `json:"error,omitempty"`
+	// Note explains a "stopped" row: Tailscale forwards the address, but the
+	// VPS or app behind it isn't running, so nothing answers yet.
+	Note string `json:"note,omitempty"`
 }
 
 type remoteView struct {
@@ -53,6 +57,10 @@ type remoteView struct {
 type desiredExposure struct {
 	tunnel.Exposure
 	label string
+	// What the address leads to, if anything that can be stopped: the
+	// dashboard and the apps gateway are lpsd itself.
+	vps *store.VPS
+	app *store.App
 }
 
 func (s *Server) remoteEnabled(ctx context.Context) bool {
@@ -69,7 +77,7 @@ func (s *Server) desiredExposures(ctx context.Context) (map[int]desiredExposure,
 	if !s.remoteEnabled(ctx) {
 		return out, nil
 	}
-	add := func(e tunnel.Exposure, label string) { out[e.Port] = desiredExposure{e, label} }
+	add := func(e tunnel.Exposure, label string) { out[e.Port] = desiredExposure{Exposure: e, label: label} }
 	if s.cfg.DashboardPort > 0 {
 		add(tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: dashboardRemotePort, LocalPort: s.cfg.DashboardPort}, "Dashboard")
 	}
@@ -78,7 +86,8 @@ func (s *Server) desiredExposures(ctx context.Context) (map[int]desiredExposure,
 		return nil, err
 	}
 	for _, v := range vpses {
-		add(tunnel.Exposure{Proto: tunnel.ProtoTCP, Port: v.SSHPort, LocalPort: v.SSHPort}, "VPS "+v.Name+" (SSH)")
+		e := tunnel.Exposure{Proto: tunnel.ProtoTCP, Port: v.SSHPort, LocalPort: v.SSHPort}
+		out[e.Port] = desiredExposure{Exposure: e, label: "VPS " + v.Name + " (SSH)", vps: v}
 	}
 	apps, err := s.store.ListApps(ctx)
 	if err != nil {
@@ -88,10 +97,12 @@ func (s *Server) desiredExposures(ctx context.Context) (map[int]desiredExposure,
 		add(tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: appsRemotePort, LocalPort: s.cfg.GatewayPort}, "Apps by name (/<app>/)")
 	}
 	for _, a := range apps {
-		add(tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: a.HostPort, LocalPort: a.HostPort}, "App "+a.Name)
+		e := tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: a.HostPort, LocalPort: a.HostPort}
+		out[e.Port] = desiredExposure{Exposure: e, label: "App " + a.Name, app: a}
 		// Funnel only ever applies to apps, never the dashboard or SSH.
 		if a.PublicPort > 0 && a.PublicPort != dashboardRemotePort {
-			add(tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: a.PublicPort, LocalPort: a.HostPort, Public: true}, "App "+a.Name+" (public)")
+			e := tunnel.Exposure{Proto: tunnel.ProtoHTTPS, Port: a.PublicPort, LocalPort: a.HostPort, Public: true}
+			out[e.Port] = desiredExposure{Exposure: e, label: "App " + a.Name + " (public)", app: a}
 		}
 	}
 	return out, nil
@@ -340,6 +351,7 @@ func (s *Server) buildRemoteView(ctx context.Context, freshStatus bool) remoteVi
 		ports = append(ports, p)
 	}
 	sort.Ints(ports)
+	targetStates := map[string]string{} // an app's two rows share one lookup
 	for _, p := range ports {
 		d := desired[p]
 		ev := exposureView{Exposure: d.Exposure, Label: d.label, State: "pending", URL: remoteURL(v.Status.DNSName, d.Exposure)}
@@ -349,12 +361,61 @@ func (s *Server) buildRemoteView(ctx context.Context, freshStatus bool) remoteVi
 		if e, ok := portErrs[p]; ok {
 			ev.State, ev.Error = "error", e
 		}
+		if ev.State == "active" {
+			if note := s.exposureTargetDown(ctx, d, targetStates); note != "" {
+				ev.State, ev.Note = "stopped", note
+			}
+		}
 		if p == dashboardRemotePort && ev.State == "active" {
 			v.DashboardURL = ev.URL
 		}
 		v.Exposures = append(v.Exposures, ev)
 	}
 	return v
+}
+
+// exposureTargetDown says why nothing answers at an applied exposure, or ""
+// when its VPS or app is running (or it leads to lpsd itself).
+func (s *Server) exposureTargetDown(ctx context.Context, d desiredExposure, cache map[string]string) string {
+	var key, what string
+	var state func() (string, error)
+	switch {
+	case d.vps != nil:
+		key, what = fmt.Sprintf("vps:%d", d.vps.ID), "VPS "+d.vps.Name
+		state = func() (string, error) { return s.engine.State(ctx, d.vps.ContainerID) }
+	case d.app != nil && d.app.InVPS():
+		key, what = fmt.Sprintf("app:%d", d.app.ID), "App "+d.app.Name
+		v, err := s.store.GetVPS(ctx, d.app.VPSID)
+		if err != nil {
+			return ""
+		}
+		if st, err := s.engine.State(ctx, v.ContainerID); err == nil && st != docker.StateRunning {
+			// Starting the app alone would fail: point at what to start.
+			return fmt.Sprintf("VPS %s, which runs %s, is stopped, so nothing answers at this address until you start it.", v.Name, what)
+		}
+		state = func() (string, error) { return s.vpsAppState(ctx, d.app) }
+	case d.app != nil:
+		key, what = fmt.Sprintf("app:%d", d.app.ID), "App "+d.app.Name
+		state = func() (string, error) { return s.engine.State(ctx, d.app.ContainerID) }
+	default:
+		return ""
+	}
+	st, ok := cache[key]
+	if !ok {
+		var err error
+		if st, err = state(); err != nil {
+			st = "" // unknown: don't claim it's down
+		}
+		cache[key] = st
+	}
+	switch {
+	case st == "" || st == docker.StateRunning:
+		return ""
+	case st == docker.StateMissing && d.app != nil:
+		return what + " isn't deployed yet, so nothing answers at this address."
+	default:
+		return what + " is stopped, so nothing answers at this address until you start it."
+	}
 }
 
 func (s *Server) handleGetRemote(w http.ResponseWriter, r *http.Request) {

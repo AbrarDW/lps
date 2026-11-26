@@ -157,6 +157,65 @@ func TestRemoteLifecycle(t *testing.T) {
 	}
 }
 
+// A stopped VPS or app keeps its Tailscale address (so it answers again once
+// started), but the page must not call that address active.
+func TestRemoteShowsStoppedTargets(t *testing.T) {
+	ft := newFakeTunnel()
+	h := setupWith(t, ft)
+	h.login()
+
+	var v vpsView
+	h.do("POST", "/api/vps", createVPSReq{Name: "box", SSHUser: "dev", Password: "password1"}, &v)
+	var a appView
+	h.do("POST", "/api/apps", createAppReq{Name: "site", SourcePath: appDir(t), ContainerPort: 80}, &a)
+	h.do("PUT", "/api/remote", map[string]bool{"enabled": true}, nil)
+	if code := h.do("PUT", fmt.Sprintf("/api/apps/%d/public", a.ID), map[string]bool{"public": true}, nil); code != 200 {
+		t.Fatalf("public: %d", code)
+	}
+
+	rows := func() map[int]exposureView {
+		var rv remoteView
+		h.do("GET", "/api/remote", nil, &rv)
+		out := map[int]exposureView{}
+		for _, e := range rv.Exposures {
+			out[e.Port] = e
+		}
+		return out
+	}
+	allActive := func() bool {
+		for _, e := range rows() {
+			if e.State != "active" {
+				return false
+			}
+		}
+		return true
+	}
+	waitFor(t, allActive)
+
+	h.do("POST", fmt.Sprintf("/api/vps/%d/stop", v.ID), nil, nil)
+	h.do("POST", fmt.Sprintf("/api/apps/%d/stop", a.ID), nil, nil)
+	got := rows()
+	for _, p := range []int{2201, 8100, 8443} {
+		if got[p].State != "stopped" || !strings.Contains(got[p].Note, "is stopped") {
+			t.Fatalf("port %d = %+v, want stopped with a note", p, got[p])
+		}
+	}
+	if !strings.Contains(got[2201].Note, "VPS box") || !strings.Contains(got[8100].Note, "App site") {
+		t.Fatalf("notes don't name the target: %q, %q", got[2201].Note, got[8100].Note)
+	}
+	if got[443].State != "active" || got[443].Note != "" {
+		t.Fatalf("dashboard = %+v, want active", got[443])
+	}
+	// The forwarding stays, so the address works again as soon as it starts.
+	if live := ft.snapshot(); live[2201].Port == 0 || live[8100].Port == 0 || live[8443].Port == 0 {
+		t.Fatalf("exposure removed while stopped: %v", live)
+	}
+
+	h.do("POST", fmt.Sprintf("/api/vps/%d/start", v.ID), nil, nil)
+	h.do("POST", fmt.Sprintf("/api/apps/%d/start", a.ID), nil, nil)
+	waitFor(t, allActive)
+}
+
 func TestRemotePublicLinks(t *testing.T) {
 	ft := newFakeTunnel()
 	h := setupWith(t, ft)

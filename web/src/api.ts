@@ -272,8 +272,10 @@ export interface ExposureView {
   public: boolean;
   label: string;
   url: string;
-  state: "active" | "pending" | "error";
+  state: "active" | "stopped" | "pending" | "error";
   error?: string;
+  /** Why a "stopped" row doesn't answer: its VPS or app isn't running. */
+  note?: string;
 }
 
 export interface CloudflareView {
