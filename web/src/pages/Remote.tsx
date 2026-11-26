@@ -307,6 +307,9 @@ export function Remote() {
                     {e.error && (
                       <div className="text-xs text-danger-ink">{e.error}</div>
                     )}
+                    {e.note && (
+                      <div className="text-xs text-ink-muted">{e.note}</div>
+                    )}
                   </div>
                   <StateBadge state={e.state} />
                 </li>
