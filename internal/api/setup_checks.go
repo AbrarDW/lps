@@ -115,9 +115,19 @@ func (s *Server) handleSetupAction(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetAutostart(w http.ResponseWriter, r *http.Request) {
 	a := s.hooks.autostart
 	on, err := a.Enabled()
-	resp := map[string]any{"supported": a.Supported(), "enabled": on && a.Supported()}
+	resp := map[string]any{"supported": a.Supported(), "enabled": on && a.Supported(), "os": runtime.GOOS}
 	if err != nil && a.Supported() {
 		resp["error"] = err.Error()
+	}
+	// The Linux package describes its own switch (sign-in vs boot).
+	if d, ok := a.(interface {
+		Label() string
+		Note() string
+	}); ok && a.Supported() {
+		resp["label"] = d.Label()
+		if n := d.Note(); n != "" {
+			resp["note"] = n
+		}
 	}
 	writeJSON(w, 200, resp)
 }
@@ -130,7 +140,7 @@ func (s *Server) handleSetAutostart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.hooks.autostart.Supported() {
-		writeError(w, http.StatusNotImplemented, "start at sign-in is only available in the installed Windows app")
+		writeError(w, http.StatusNotImplemented, "starting at sign-in needs the installed LPS app (the Windows installer or the Linux package)")
 		return
 	}
 	if err := s.hooks.autostart.Set(req.Enabled); err != nil {

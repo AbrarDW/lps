@@ -1,0 +1,52 @@
+#!/bin/sh
+# Runs as root after the package is unpacked.
+set -e
+
+# Every user whose systemd user manager is running ("machine" user@.host).
+users() {
+	for d in /run/user/*; do
+		[ -d "$d" ] || continue
+		id -nu "${d##*/}" 2>/dev/null || true
+	done
+}
+
+if [ "$1" = configure ]; then
+	if [ -n "$2" ]; then
+		# Upgrade: restart LPS for whoever is running it, on the new binary.
+		# VPS and apps run in Docker and keep running meanwhile.
+		for u in $(users); do
+			if systemctl --user -M "$u@" is-active --quiet lps.service 2>/dev/null; then
+				systemctl --user -M "$u@" daemon-reload 2>/dev/null || true
+				systemctl --user -M "$u@" restart lps.service 2>/dev/null || true
+			fi
+		done
+		exit 0
+	fi
+
+	# Fresh install with sudo: start LPS for the user who installed it, like
+	# the Windows installer does. Other users run the command below themselves.
+	if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != root ] &&
+		systemctl --user -M "$SUDO_USER@" enable --now lps.service >/dev/null 2>&1; then
+		cat <<MSG
+
+LPS is running for $SUDO_USER. Open http://127.0.0.1:7070 to set it up.
+MSG
+	else
+		cat <<'MSG'
+
+LPS is installed. Start it for your user (and at every sign-in):
+    systemctl --user enable --now lps
+then open http://127.0.0.1:7070 to set it up.
+MSG
+	fi
+	cat <<'MSG'
+
+LPS needs Docker, and your user must be able to use it:
+    sudo usermod -aG docker $USER      (then sign out and back in)
+To also start LPS at boot, before anyone signs in:
+    sudo loginctl enable-linger $USER
+Log: journalctl --user -u lps -f
+
+MSG
+fi
+exit 0

@@ -22,6 +22,12 @@ func (f *fakeAutostart) Set(on bool) error {
 	return nil
 }
 
+// describedAutostart mimics the Linux systemd autostart, which names its switch.
+type describedAutostart struct{ fakeAutostart }
+
+func (describedAutostart) Label() string { return "Start LPS when I sign in" }
+func (describedAutostart) Note() string  { return "run this" }
+
 func fakeHooks(wslOK bool, started *int) systemHooks {
 	return systemHooks{
 		checks: func(context.Context) []platform.Check {
@@ -107,6 +113,17 @@ func TestAutostartAPI(t *testing.T) {
 	if got["enabled"] != true || got["supported"] != true {
 		t.Fatalf("after enable: %v", got)
 	}
+	if _, ok := got["label"]; ok {
+		t.Fatalf("plain autostart should not carry a label: %v", got)
+	}
+
+	h.srv.hooks.autostart = &describedAutostart{fakeAutostart{supported: true}}
+	got = nil
+	h.do("GET", "/api/system/autostart", nil, &got)
+	if got["label"] != "Start LPS when I sign in" || got["note"] != "run this" {
+		t.Fatalf("described autostart: %v", got)
+	}
+
 	h.srv.hooks.autostart = &fakeAutostart{supported: false}
 	if code := h.do("PUT", "/api/system/autostart", map[string]bool{"enabled": true}, nil); code != 501 {
 		t.Fatalf("unsupported: %d", code)

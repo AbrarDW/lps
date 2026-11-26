@@ -500,15 +500,19 @@ function AutostartToggle() {
     onSuccess: (v) => qc.setQueryData(["autostart"], v),
   });
   if (!auto.data?.supported) return <span />;
+  const label = auto.data.label ?? "Start LPS when I sign in to Windows";
   return (
-    <div className="flex items-center gap-2 text-[13px] text-ink-muted">
+    <div
+      className="flex items-center gap-2 text-[13px] text-ink-muted"
+      title={auto.data.note}
+    >
       <Switch
-        label="Start with Windows"
+        label={label}
         checked={auto.data.enabled}
         disabled={set.isPending}
         onChange={(v) => set.mutate(v)}
       />
-      Start LPS when I sign in to Windows
+      {label}
     </div>
   );
 }

@@ -34,12 +34,3 @@ func FreeBytes(dir string) (uint64, error) {
 	}
 	return st.Bavail * uint64(st.Bsize), nil
 }
-
-type noAutostart struct{}
-
-func (noAutostart) Supported() bool        { return false }
-func (noAutostart) Enabled() (bool, error) { return false, nil }
-func (noAutostart) Set(bool) error         { return ErrUnsupported }
-
-// NewAutostart returns an Autostart; not yet implemented outside Windows.
-func NewAutostart() Autostart { return noAutostart{} }

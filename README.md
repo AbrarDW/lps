@@ -2,7 +2,7 @@
 
 Turn your home PC into your own VPS host. LPS runs **Linux VPS** (Ubuntu machines you SSH into) and **web app deployments** on your own hardware, managed from a web dashboard, so you can test your apps from anywhere without renting a server.
 
-> Status: **early development**, but the core works: Linux VPS with a [browser terminal](#terminal-in-the-browser) and [snapshots](#snapshots), app deploys from a folder or [git repository](#deploying-from-a-git-repository) (with generated Dockerfiles), [addresses by name](#app-addresses-by-name) and [on your own domain](#your-own-domain-cloudflare-tunnel), remote access with [Tailscale](#remote-access-with-tailscale) or [Cloudflare](#quick-public-links-cloudflare), [two-factor sign-in](#two-factor-sign-in), and the [Windows installer](#install-on-windows) with one-click updates. Linux and macOS packages are next. See the [roadmap](#roadmap).
+> Status: **early development**, but the core works: Linux VPS with a [browser terminal](#terminal-in-the-browser) and [snapshots](#snapshots), app deploys from a folder or [git repository](#deploying-from-a-git-repository) (with generated Dockerfiles), [addresses by name](#app-addresses-by-name) and [on your own domain](#your-own-domain-cloudflare-tunnel), remote access with [Tailscale](#remote-access-with-tailscale) or [Cloudflare](#quick-public-links-cloudflare), [two-factor sign-in](#two-factor-sign-in), and installers for [Windows](#install-on-windows) (with one-click updates) and [Debian/Ubuntu](#install-on-linux). A macOS package is next. See the [roadmap](#roadmap).
 
 The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy dotted paper, built with Tailwind 4 (tokens in `web/src/index.css`) and IBM Plex fonts bundled with the app, so it works offline.
 
@@ -10,7 +10,7 @@ The dashboard uses a "blueprint" look: Blueprint.js-style dense panels on navy d
 
 ## Install on Windows
 
-1. Download **`LPS-Setup-<version>.exe`** from the [Releases page](https://github.com/AbrarDW/lps/releases) (or, for a development build, from the latest successful **Windows installer** run under the repository's *Actions* tab → *Artifacts*).
+1. Download **`LPS-Setup-<version>.exe`** from the [Releases page](https://github.com/AbrarDW/lps/releases) (or, for a development build, from the latest successful **Installers** run under the repository's *Actions* tab → *Artifacts* → `LPS-windows`).
 2. Run it. It installs for your user only (no administrator rights needed) into `%LOCALAPPDATA%\Programs\LPS`. Until the installer is code-signed, Chrome and Windows may warn about it; see [Download blocked?](#download-blocked).
 3. LPS starts with an icon in the system tray and opens the **setup wizard** in your browser.
 
@@ -56,11 +56,48 @@ Or build the installer yourself from source with `.\build.ps1 installer` (see [B
 - **Locally:** set `LPS_SIGN_PFX` to a `.pfx` code-signing certificate and `LPS_SIGN_PASSWORD` to its password, then run `.\build.ps1 installer`.
 - **In GitHub Actions:** add the repository secrets `WINDOWS_SIGN_PFX_BASE64` (the `.pfx`, base64-encoded: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pfx"))`) and `WINDOWS_SIGN_PASSWORD`. Every build is then signed and timestamped.
 
-A newly bought certificate will usually **not** come as a `.pfx`: since June 2023 certificate authorities must keep code-signing keys on a hardware token or in their cloud signing service, so the `.pfx` path only fits a certificate you already have in that form. The practical options all sign through their own tool or GitHub Action, which would take the place of the *Load the code-signing certificate* step in `.github/workflows/windows-installer.yml`:
+A newly bought certificate will usually **not** come as a `.pfx`: since June 2023 certificate authorities must keep code-signing keys on a hardware token or in their cloud signing service, so the `.pfx` path only fits a certificate you already have in that form. The practical options all sign through their own tool or GitHub Action, which would take the place of the *Load the code-signing certificate* step in `.github/workflows/installers.yml`:
 
 - [SignPath Foundation](https://signpath.org/): free for open-source projects. Apply with the repository; the publisher shown is the SignPath Foundation, naming LPS.
 - Microsoft's Azure Trusted Signing: about $10 a month, after Microsoft verifies your identity (check whether your country and account type are eligible).
 - A certificate from a certificate authority (DigiCert, Sectigo, SSL.com…) with its cloud signing service: roughly $200–500 a year. A USB token can't be used from GitHub's hosted runners.
+
+## Install on Linux
+
+For Debian, Ubuntu and their derivatives, on 64-bit PCs (`amd64`) and ARM boards such as a Raspberry Pi 4/5 (`arm64`):
+
+1. Install Docker ([Docker Engine](https://docs.docker.com/engine/install/), or `sudo apt install docker.io`) and let your user use it, then sign out and back in:
+
+   ```bash
+   sudo usermod -aG docker $USER
+   ```
+
+2. Download **`lps_<version>_amd64.deb`** (or `_arm64.deb`) from the [Releases page](https://github.com/AbrarDW/lps/releases) and install it:
+
+   ```bash
+   sudo apt install ./lps_*_amd64.deb
+   ```
+
+3. Installing with `sudo` starts LPS for you right away. Open <http://127.0.0.1:7070> and the setup wizard checks Docker and disk space and creates your admin account.
+
+LPS runs as a **systemd user service**: as you, not root, so it can read your project folders and keeps its data in `~/.local/share/lps`. It starts whenever you sign in; the **Start LPS when I sign in** switch on the dashboard turns that off and on. For a home server that should come up at boot before anyone signs in, also run:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+| To… | Run |
+|---|---|
+| Start LPS for another user (as that user) | `systemctl --user enable --now lps` |
+| Stop or restart it | `systemctl --user stop lps` · `systemctl --user restart lps` |
+| Follow its log | `journalctl --user -u lps -f` |
+| Change its flags (for example `-bind-ip 0.0.0.0`) | `systemctl --user edit lps`, then add `[Service]`, an empty `ExecStart=` and `ExecStart=/usr/bin/lpsd serve -bind-ip 0.0.0.0` |
+
+**Updates:** the dashboard tells you when there is a new release and links to it. Download the new `.deb` and install it the same way; LPS restarts on the new version while your VPS and apps keep running in Docker.
+
+**Uninstall:** `sudo apt remove lps` stops LPS and turns off its autostart for every user. Your data (`~/.local/share/lps`) and the VPS and apps in Docker are kept, so a reinstall picks them up.
+
+Other distributions: build from source (see [Linux / macOS](#linux--macos)), or run `make deb` to build the package yourself.
 
 ## How it works
 
@@ -496,12 +533,12 @@ flowchart TB
 
 ### Making a release
 
-1. On GitHub, open **Actions → Windows installer → Run workflow**.
+1. On GitHub, open **Actions → Installers → Run workflow**.
 2. Leave **Use workflow from** on `master`, type the new version (for example `0.2.0`), tick **pre-release** if it is one, and press **Run workflow**.
 
-The run tests and builds the installer from the current `master`. Only if everything passes does it create the tag `v0.2.0` and the release, with `LPS-Setup-0.2.0.exe`, its `.sha256` and notes generated from the merged pull requests. It refuses a version that isn't like `1.2.3` (or `1.2.3-beta.1`), a tag that already exists, and runs from any branch other than `master`. Leave the version empty to just build an installer.
+The run tests and builds the installers from the current `master`. Only if everything passes (including installing, upgrading and removing each one) does it create the tag `v0.2.0` and the release, with `LPS-Setup-0.2.0.exe`, `lps_0.2.0_amd64.deb`, `lps_0.2.0_arm64.deb`, a `.sha256` for each and notes generated from the merged pull requests. It refuses a version that isn't like `1.2.3` (or `1.2.3-beta.1`), a tag that already exists, and runs from any branch other than `master`. Leave the version empty to just build an installer.
 
-Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works: the installer is attached to that release.
+Publishing a release by hand in the GitHub UI (or pushing a `v*` tag) also works: the installers are attached to that release.
 
 ## Roadmap
 
@@ -511,7 +548,7 @@ flowchart LR
     m2["2. Apps<br/>✅ generated Dockerfiles,<br/>✅ env vars + secrets,<br/>✅ addresses by name,<br/>✅ your own domain"]
     m3["3. Remote access<br/>✅ Tailscale, ✅ 2FA,<br/>✅ Cloudflare quick links"]
     m4["4. VPS feel<br/>✅ terminal, ✅ apps in a VPS,<br/>✅ live stats, ✅ activity,<br/>✅ git deploys, ✅ snapshots,<br/>✅ scheduled + exported snapshots"]
-    m5["5. Packaging<br/>✅ Windows installer,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
+    m5["5. Packaging<br/>✅ Windows installer,<br/>✅ Linux .deb + systemd,<br/>✅ one-click releases,<br/>✅ auto-update, signing"]
     m1 --> m2 --> m3 --> m4 --> m5
 ```
 
@@ -519,7 +556,7 @@ flowchart LR
 2. **Apps:** ✅ generated Dockerfiles for Node, Python, Go, PHP and static sites; ✅ environment variables and secrets; ✅ apps inside a VPS. ✅ addresses by name (`myapp.localhost`, `/myapp/` on the tailnet). ✅ addresses on your own domain through Cloudflare Tunnel.
 3. **Remote access (pluggable):** ✅ Tailscale (private access to the dashboard, SSH and apps; Funnel for public links). ✅ two-factor sign-in (TOTP) with recovery codes. ✅ Cloudflare quick links (public demo links, no account). ✅ your own domain through Cloudflare Tunnel.
 4. **VPS feel:** ✅ browser terminal, ✅ live CPU/memory stats, ✅ activity feed. ✅ git-URL deploys with auto-deploy, ✅ VPS snapshots (restore, undo, copy). ✅ automatic snapshots and snapshot files (export, import on another PC).
-5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. Next: Linux (systemd, .deb) and macOS (launchd, .pkg) installers.
+5. **Packaging:** ✅ Windows installer, tray app and setup wizard, ✅ one-click releases, ✅ code signing ready (needs a certificate). ✅ auto-update. ✅ Linux `.deb` with a systemd user service. Next: macOS (launchd, .pkg).
 
 ## License
 

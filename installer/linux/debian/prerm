@@ -1,0 +1,15 @@
+#!/bin/sh
+# Runs as root before the package's files are removed.
+set -e
+
+if [ "$1" = remove ]; then
+	# Stop LPS for everyone running it and drop the sign-in autostart, so
+	# nothing points at the removed binary. Data in ~/.local/share/lps, and
+	# the VPS and apps in Docker, are kept.
+	for d in /run/user/*; do
+		[ -d "$d" ] || continue
+		u=$(id -nu "${d##*/}" 2>/dev/null) || continue
+		systemctl --user -M "$u@" disable --now lps.service >/dev/null 2>&1 || true
+	done
+fi
+exit 0

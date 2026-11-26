@@ -260,16 +260,22 @@ function FinishStep() {
         <p>LPS is ready. Next, create your first Linux VPS or deploy an app from a project folder.</p>
         {auto.data?.supported && (
           <div className="flex items-center gap-3 rounded-[2px] border border-line-soft p-3">
-            <Switch label="Start with Windows" checked={auto.data.enabled} disabled={set.isPending} onChange={(v) => set.mutate(v)} />
+            <Switch
+              label={auto.data.label ?? "Start LPS when I sign in to Windows"}
+              checked={auto.data.enabled}
+              disabled={set.isPending}
+              onChange={(v) => set.mutate(v)}
+            />
             <div>
-              <div className="font-medium">Start LPS when I sign in to Windows</div>
+              <div className="font-medium">{auto.data.label ?? "Start LPS when I sign in to Windows"}</div>
               <div className="text-xs text-ink-muted">Recommended, so your VPS and apps are reachable after a restart.</div>
+              {auto.data.note && <div className="mt-1 text-xs text-ink-muted">{auto.data.note}</div>}
             </div>
           </div>
         )}
         <ErrorBox error={set.error} />
         <p className="text-ink-muted">
-          LPS keeps running in the background{auto.data?.supported ? " (look for the LPS icon in the system tray)" : ""}. Bookmark{" "}
+          LPS keeps running in the background{auto.data?.supported && auto.data.os === "windows" ? " (look for the LPS icon in the system tray)" : ""}. Bookmark{" "}
           <code>{window.location.origin}</code>.
         </p>
         <Button onClick={() => finish("/")}>Open the dashboard</Button>
