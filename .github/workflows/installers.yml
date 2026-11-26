@@ -31,7 +31,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       tag: ${{ steps.check.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # Inputs reach scripts only through env, never ${{ }} inside run:, so a
@@ -61,15 +61,15 @@ jobs:
     env:
       LPS_VERSION: ${{ needs.prepare.outputs.version }} # empty: git describe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # git describe for the version
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -203,7 +203,7 @@ jobs:
           if (-not $ok) { Get-Content "$env:ProgramData\LPS\lps.log" -ErrorAction SilentlyContinue; throw "lps.exe did not serve the dashboard" }
           Write-Host "lps.exe started and served the dashboard"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: LPS-windows
           path: |
@@ -215,15 +215,15 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # git describe for the version
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -283,7 +283,7 @@ jobs:
           if curl -fsS http://127.0.0.1:7070/api/health >/dev/null 2>&1; then echo "::error::dashboard still answering after removal"; exit 1; fi
           echo "Install/upgrade/remove OK"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: LPS-linux
           path: |
@@ -295,15 +295,15 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # git describe for the version
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -360,7 +360,7 @@ jobs:
           if pkgutil --pkg-info com.abrardw.lps >/dev/null 2>&1; then echo "::error::package receipt left behind"; exit 1; fi
           echo "Install/upgrade/uninstall OK"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: LPS-macos
           path: |
@@ -376,7 +376,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || needs.prepare.outputs.tag != ''
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -384,13 +384,13 @@ jobs:
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
 
       - name: Publish release
         if: needs.prepare.outputs.tag != ''
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ github.sha }}
