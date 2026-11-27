@@ -492,9 +492,15 @@ func (s *Server) reconcileVPSApps(ctx context.Context) {
 			continue
 		}
 		s.mu.Lock()
-		busy := s.deploying[a.ID]
+		busy := s.deploying[a.ID] || s.snapping[a.VPSID]
+		if t := s.vpsTasks[a.VPSID]; t != nil && t.running {
+			busy = true // being provisioned or restored
+		}
 		s.mu.Unlock()
 		if busy {
+			// While a snapshot is taken, Docker pauses the VPS: it still
+			// counts as running, but nothing can run in it, so the app
+			// would look stopped and the restart would fail.
 			continue
 		}
 		if _, err := s.runningVPS(ctx, a); err != nil {

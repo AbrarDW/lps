@@ -295,6 +295,42 @@ func TestVPSAppDeployFromPC(t *testing.T) {
 	}
 }
 
+// While a snapshot pauses the VPS, its apps look stopped; reconcile must
+// leave them alone instead of failing to restart them.
+func TestVPSAppNotRestartedDuringSnapshot(t *testing.T) {
+	h := setup(t)
+	h.login()
+	v := h.newRunningVPS()
+	req := createAppReq{Name: "api", VPSID: v.ID, SourceKind: "vps", VPSPath: "~/code/api", ContainerPort: 3000, StartCmd: "npm start"}
+	var a appView
+	if code := h.do("POST", "/api/apps", req, &a); code != 202 {
+		t.Fatalf("create: %d", code)
+	}
+	path := fmt.Sprintf("/api/apps/%d", a.ID)
+	h.waitDeployed(path)
+
+	h.srv.mu.Lock()
+	h.srv.snapping[v.ID] = true
+	h.srv.mu.Unlock()
+	h.eng.mu.Lock()
+	delete(h.eng.vps().procs, "api") // what the paused VPS looks like from outside
+	h.eng.mu.Unlock()
+
+	h.srv.reconcileVPSApps(context.Background())
+	if _, ok := h.eng.snapshot().procs["api"]; ok {
+		t.Fatal("app restarted while its VPS was being snapshotted")
+	}
+
+	// Once the snapshot is done, a really stopped app is restarted again.
+	h.srv.mu.Lock()
+	delete(h.srv.snapping, v.ID)
+	h.srv.mu.Unlock()
+	h.srv.reconcileVPSApps(context.Background())
+	if _, ok := h.eng.snapshot().procs["api"]; !ok {
+		t.Fatal("app not restarted after the snapshot")
+	}
+}
+
 func TestVPSAppRestartsAfterVPSRestart(t *testing.T) {
 	h := setup(t)
 	h.login()
