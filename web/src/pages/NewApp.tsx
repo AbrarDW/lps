@@ -159,7 +159,7 @@ export function NewApp() {
           {inVPS && vps && vps.state !== "running" && <Callout intent="warning">VPS {vps.name} is {vps.state}. Start it before deploying.</Callout>}
 
           {(
-            <fieldset className="m-0 flex flex-wrap gap-x-6 gap-y-2 border-0 p-0">
+            <fieldset className="flex flex-wrap gap-x-6 gap-y-2 border-0 p-0">
               <legend className="mb-1.5 text-[13px] font-medium">Code from</legend>
               {(
                 [
