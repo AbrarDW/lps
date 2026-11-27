@@ -2,7 +2,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all web build build-all deb pkg test run clean
+.PHONY: all web build build-all deb pkg test run screenshots clean
 
 all: web build
 
@@ -42,6 +42,10 @@ test:
 
 run: build
 	./bin/lpsd serve
+
+# Retake docs/images from a running LPS with demo data (see the script).
+screenshots:
+	scripts/screenshots/run.sh
 
 clean:
 	rm -rf bin dist

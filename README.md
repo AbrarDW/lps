@@ -57,6 +57,23 @@ flowchart LR
 
 Every VPS and app is a Docker container managed by `lpsd`. On Windows, Docker Desktop runs them in a WSL2 Linux VM, so every VPS is real Linux. By default, everything listens only on `127.0.0.1`. To reach it from other devices, turn on [remote access](https://github.com/AbrarDW/lps/blob/master/docs/remote-access.md).
 
+## Why not just use Docker?
+
+You can: LPS runs everything in Docker, so it doesn't replace it. What it saves you is the work around the containers:
+
+| You want… | With plain Docker | With LPS |
+|---|---|---|
+| A server to SSH into | Write an image with `sshd`, users, keys and sudo; map ports; add a volume for `/home` | **New VPS**, paste your key. There's also a terminal in the browser. |
+| To deploy an app | Write a Dockerfile, then `docker build`, `docker rm` and `docker run` on every change | Point at a folder or git repository. LPS writes the Dockerfile and redeploys on a click or a new commit. |
+| To reach it from your phone | Set up Tailscale or Cloudflare yourself and keep their rules in sync | Turn on **Remote access** or a public link |
+| To undo a change | Commit an image and copy the volume by hand | **Take snapshot**, then **Restore** |
+
+**Plain Docker is the better choice when:**
+- you want full control over every container and option;
+- your project runs several containers together with Docker Compose (LPS deploys one container per app and doesn't read `docker-compose.yml`);
+- an app needs files that survive a redeploy, such as a database (an app in its own container keeps no data between deploys, so run it [inside a VPS](https://github.com/AbrarDW/lps/blob/master/docs/apps.md#deploying-an-app-into-a-vps) instead);
+- you need Docker inside your server, which an LPS VPS doesn't support yet.
+
 ## Documentation
 
 | Guide | Covers |
