@@ -2,6 +2,7 @@
 
 - [Build from source](#build-from-source)
 - [Project layout](#project-layout)
+- [Screenshots](#screenshots)
 - [Making a release](#making-a-release)
 - [Code signing](#code-signing)
 
@@ -83,6 +84,20 @@ flowchart LR
 - **Frontend:** `web/` (React, Vite, TypeScript, TanStack Query, Tailwind 4, with tokens in `web/src/index.css`). IBM Plex fonts are bundled, so the dashboard works offline. For hot reload, run `npm run dev` in `web/` while `lpsd serve` is running; Vite proxies `/api` to it.
 - **Database:** SQLite through the pure-Go `modernc.org/sqlite` driver, so there's no CGO and cross-compiling is easy. Migrations live in `internal/store/migrations` and are applied on start. The SQL is kept portable so PostgreSQL can be added later.
 - **Tests:** `internal/docker.Engine` and `internal/tunnel.Provider` are interfaces, and the API tests use in-memory fakes, so `go test ./...` needs neither Docker nor Tailscale.
+
+## Screenshots
+
+The screenshots in `docs/images` are taken from a real LPS with demo data. To retake them after changing the dashboard, run:
+
+```bash
+make screenshots
+```
+
+`scripts/screenshots/run.sh` builds `lpsd` and starts it with a throwaway data folder. It creates a demo (VPS `dev-box`, app `portfolio` in its own container and app `notes-api` inside the VPS), saves the screenshots over the ones in `docs/images`, then deletes the demo. Tailscale is replaced by `scripts/screenshots/fake-tailscale`, which reports a signed-in `home-pc.tail1234.ts.net`, so nothing real is published.
+
+It needs Docker running, Go, Node.js with Playwright and Chromium, Python 3 and internet access for the Ubuntu, nginx and Node.js downloads. The first run takes a few minutes. Run it where no other LPS is running, since it uses the usual ports. Set `LPS_SHOTS_KEEP=1` to keep the demo running afterwards, and `LPS_SHOTS_PROJECTS` to change where the demo projects are written (their path shows in the screenshots; the default is `/home/you/projects`).
+
+`setup-wizard.png` isn't retaken: it shows the Windows checks (WSL2), which only appear on Windows.
 
 ## Making a release
 

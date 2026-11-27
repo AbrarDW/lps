@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Stand-in for the tailscale CLI, for taking documentation screenshots.
+
+It answers `tailscale status --json` with a signed-in, HTTPS-enabled node
+(home-pc.tail1234.ts.net) and keeps `tailscale serve`/`funnel` settings in a
+JSON file, so LPS's remote-access page shows everything published. Nothing is
+sent anywhere.
+
+Environment:
+  LPS_FAKE_TS_STATUS  JSON file to print for `status` (the repository's
+                      internal/tunnel/testdata/status_ready.json)
+  LPS_FAKE_TS_DIR     folder for the serve settings (serve.json)
+"""
+import json
+import os
+import sys
+
+status_file = os.environ["LPS_FAKE_TS_STATUS"]
+serve_file = os.path.join(os.environ["LPS_FAKE_TS_DIR"], "serve.json")
+host = "home-pc.tail1234.ts.net"
+
+args = sys.argv[1:]
+if not args:
+    sys.exit("usage: tailscale status|serve|funnel ...")
+
+if args[0] == "status":
+    with open(status_file) as f:
+        print(f.read())
+    sys.exit(0)
+
+cfg = {"TCP": {}, "Web": {}, "AllowFunnel": {}}
+if os.path.exists(serve_file):
+    with open(serve_file) as f:
+        cfg = json.load(f)
+
+if len(args) > 1 and args[1] == "status":
+    print(json.dumps(cfg))
+    sys.exit(0)
+
+port, kind = None, None
+for a in args:
+    if a.startswith("--https="):
+        port, kind = a.split("=", 1)[1], "https"
+    elif a.startswith("--tcp="):
+        port, kind = a.split("=", 1)[1], "tcp"
+if port is None:
+    sys.exit("fake tailscale: no --https or --tcp port in: " + " ".join(args))
+
+key = f"{host}:{port}"
+if args[-1] == "off":
+    cfg["TCP"].pop(port, None)
+    cfg["Web"].pop(key, None)
+    cfg["AllowFunnel"].pop(key, None)
+elif kind == "tcp":
+    cfg["TCP"][port] = {"TCPForward": args[-1].removeprefix("tcp://")}
+else:
+    cfg["TCP"][port] = {"HTTPS": True}
+    cfg["Web"][key] = {"Handlers": {"/": {"Proxy": args[-1]}}}
+    if args[0] == "funnel":
+        cfg["AllowFunnel"][key] = True
+    else:
+        cfg["AllowFunnel"].pop(key, None)
+
+with open(serve_file, "w") as f:
+    json.dump(cfg, f)
+print("Available within your tailnet")
